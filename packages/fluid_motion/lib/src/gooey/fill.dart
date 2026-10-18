@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 
 import 'scene.dart';
+import 'shader.dart';
 import 'shape.dart';
 
 /// The background of shape [index] in a [GooeyScene]: the shape's own
@@ -10,10 +11,17 @@ import 'shape.dart';
 /// when it blobs. Use it instead of the shape's own background, UNDER the
 /// shape's content. Repaints without rebuilding.
 ///
+/// Drawn on the GPU when the shader is loaded; otherwise on the CPU.
+///
 /// The painter's size must match the shape's rect in the scene.
 class GooeyFillPainter extends CustomPainter {
-  GooeyFillPainter(this.scene, this.index, {this.fallbackColor, this.cell = 4})
-      : super(repaint: scene.repaint);
+  GooeyFillPainter(
+    this.scene,
+    this.index, {
+    this.fallbackColor,
+    this.cell = 4,
+    this.pixelRatio = 1,
+  }) : super(repaint: scene.repaint);
 
   final GooeyScene scene;
   final int index;
@@ -21,8 +29,13 @@ class GooeyFillPainter extends CustomPainter {
   /// The colour used before the scene is ready (first frame).
   final Color? fallbackColor;
 
-  /// The colour grid's resolution in px.
+  /// The colour grid's resolution in px (CPU fallback only).
   final double cell;
+
+  /// Device pixels per logical pixel, for crisp anti-aliasing on the GPU.
+  final double pixelRatio;
+
+  ui.FragmentShader? _shader;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -44,6 +57,36 @@ class GooeyFillPainter extends CustomPainter {
     final s = shapes[index];
     final o = s.rect.topLeft;
     final f = scene.field;
+
+    if (scene.style.useShader && GooeyShader.canDraw(s)) {
+      // The other shape this one is most connected to, if any.
+      GooeyShape? other;
+      var width = 0.0;
+      if (f != null && f.mixing) {
+        var best = 0.0;
+        for (var j = 0; j < shapes.length; j++) {
+          final st = f.strengthOf(index, j);
+          if (st > best) {
+            best = st;
+            other = shapes[j];
+            width = f.widthOf(index, j);
+          }
+        }
+      }
+      if (other == null || GooeyShader.canDraw(other)) {
+        GooeyShader.paintSurface(
+          canvas,
+          _shader ??= GooeyShader.newShader(),
+          s,
+          other: other,
+          blendWidth: width,
+          pixelRatio: pixelRatio,
+        );
+        return;
+      }
+    }
+
+    // CPU fallback.
 
     // The outline in local coordinates: the deformed one while blobbing,
     // otherwise the plain one (a rounded rect is drawn directly – cheapest).
@@ -92,5 +135,6 @@ class GooeyFillPainter extends CustomPainter {
   bool shouldRepaint(GooeyFillPainter oldDelegate) =>
       oldDelegate.scene != scene ||
       oldDelegate.index != index ||
-      oldDelegate.cell != cell;
+      oldDelegate.cell != cell ||
+      oldDelegate.pixelRatio != pixelRatio;
 }

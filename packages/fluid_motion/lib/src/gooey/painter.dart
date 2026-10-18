@@ -1,17 +1,26 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/rendering.dart';
 
 import 'neck.dart';
 import 'scene.dart';
 import 'shader.dart';
 
-/// Paints the necks between the shapes in a [GooeyScene] – with the GPU
-/// shader when it is loaded and both shapes are rounded rects, otherwise
-/// with the CPU version (which handles any outline). Put it UNDER the
-/// shapes; the shapes paint themselves on top ([GooeySurface]).
+/// Paints the necks between the shapes in a [GooeyScene] – on the GPU when
+/// the shader is loaded (every built-in outline), otherwise with the CPU
+/// fallback. Put it UNDER the shapes; the shapes paint themselves on top
+/// ([GooeySurface]).
 class GooeyPainter extends CustomPainter {
-  GooeyPainter(this.scene) : super(repaint: scene.repaint);
+  GooeyPainter(this.scene, {this.pixelRatio = 1})
+      : super(repaint: scene.repaint);
 
   final GooeyScene scene;
+
+  /// Device pixels per logical pixel, for crisp anti-aliasing on the GPU.
+  final double pixelRatio;
+
+  // One shader instance per neck (uniforms belong to the instance).
+  final List<ui.FragmentShader> _shaders = [];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -28,14 +37,18 @@ class GooeyPainter extends CustomPainter {
         final g = scene.neckBetween(i, j);
         if (g == null) continue;
         final a = shapes[i], b = shapes[j];
-        if (gpu && a.isRoundedRect && b.isRoundedRect) {
-          GooeyShader.paint(
+        if (gpu && GooeyShader.canDraw(a) && GooeyShader.canDraw(b)) {
+          while (_shaders.length <= slot) {
+            _shaders.add(GooeyShader.newShader());
+          }
+          GooeyShader.paintNeck(
             canvas,
-            slot++,
+            _shaders[slot++],
             a,
             b,
             g,
             blendWidth: GooeyShader.blendWidthFor(field, i, j),
+            pixelRatio: pixelRatio,
           );
         } else {
           GooeyNeckCpu.paint(
@@ -52,5 +65,6 @@ class GooeyPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(GooeyPainter oldDelegate) => oldDelegate.scene != scene;
+  bool shouldRepaint(GooeyPainter oldDelegate) =>
+      oldDelegate.scene != scene || oldDelegate.pixelRatio != pixelRatio;
 }

@@ -39,7 +39,12 @@ class GooeyBackdrop extends StatelessWidget {
   Widget build(BuildContext context) => Positioned.fill(
         child: IgnorePointer(
           child: RepaintBoundary(
-            child: CustomPaint(painter: GooeyPainter(scene)),
+            child: CustomPaint(
+              painter: GooeyPainter(
+                scene,
+                pixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
+              ),
+            ),
           ),
         ),
       );
@@ -64,7 +69,11 @@ class GooeySurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-        painter: GooeyFillPainter(scene, index),
+        painter: GooeyFillPainter(
+          scene,
+          index,
+          pixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
+        ),
         child: RepaintBoundary(child: child ?? const SizedBox.expand()),
       );
 }

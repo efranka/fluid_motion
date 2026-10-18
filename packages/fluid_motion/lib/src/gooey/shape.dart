@@ -74,8 +74,10 @@ class GooeyShape {
   /// The largest deformation (out or in) in px.
   late final double maxAmplitude;
 
-  /// Whether the outline is an axis-aligned rounded rect (fast painting and
-  /// the GPU shader).
+  /// The outline fitted into [rect] (without ripples).
+  GooeySdf get sdf => _sdf;
+
+  /// Whether the outline is an axis-aligned rounded rect.
   bool get isRoundedRect => _rr != null;
 
   /// Corner radius if [isRoundedRect], else 0.

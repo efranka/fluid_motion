@@ -13,6 +13,7 @@ First release.
   and content dissolving into another shape. Any number of shapes and any
   outline: rounded rect, circle, ring, polygon, star, any `Path`, or your own
   `GooeyGeometry`.
-- `GooeyShader`: GPU neck for rounded rects, with automatic CPU fallback.
+- `GooeyShader`: everything gooey on the GPU (necks and surfaces with colour
+  blend and blobs) for every built-in outline, with an automatic CPU fallback.
 - `MotionQuality`: automatic quality that switches expensive effects off when
   the device cannot keep up (including Low Power Mode) and back on later.

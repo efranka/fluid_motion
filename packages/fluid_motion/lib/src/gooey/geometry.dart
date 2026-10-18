@@ -35,8 +35,82 @@ abstract class GooeySdf {
   Path get path;
 
   /// If the outline is an axis-aligned rounded rect, its corner radius;
-  /// otherwise null. Rounded rects get faster painting and the GPU shader.
+  /// otherwise null.
   double? get roundedRectRadius => null;
+
+  /// How the GPU shader draws this outline – or null if it cannot, in which
+  /// case the CPU version is used. All built-in geometries have one; a custom
+  /// geometry can return one of the [GooeyGpuShape] kinds.
+  GooeyGpuShape? get gpu => null;
+}
+
+/// An outline in the form the GPU shader understands. All coordinates are in
+/// scene coordinates.
+@immutable
+class GooeyGpuShape {
+  const GooeyGpuShape._(this.type,
+      {this.p1 = 0, this.p2 = 0, this.vertices, this.field});
+
+  /// An axis-aligned rounded rect with [radius], filling its rect.
+  const GooeyGpuShape.roundedRect(double radius)
+      : this._(typeRoundedRect, p1: radius);
+
+  /// A circle (or a ring with a hole when [halfThickness] > 0), centred in its
+  /// rect.
+  const GooeyGpuShape.ring(double outerRadius, double halfThickness)
+      : this._(typeRing, p1: outerRadius, p2: halfThickness);
+
+  /// A simple polygon with up to [maxVertices] corners ([vertices] as x, y
+  /// pairs), grown by [cornerRadius].
+  const GooeyGpuShape.polygon(Float32List vertices, double cornerRadius)
+      : this._(typePolygon, p1: cornerRadius, vertices: vertices);
+
+  /// A sampled distance field (see [GooeyGpuField]).
+  const GooeyGpuShape.field(GooeyGpuField field)
+      : this._(typeField, field: field);
+
+  static const typeRoundedRect = 0,
+      typeRing = 1,
+      typePolygon = 2,
+      typeField = 3;
+
+  /// The most corners the shader handles in one polygon.
+  static const maxVertices = 24;
+
+  final int type;
+  final double p1, p2;
+  final Float32List? vertices;
+  final GooeyGpuField? field;
+}
+
+/// A distance field sampled on a grid, for outlines without a formula (any
+/// [Path]). The shader looks it up as a texture.
+class GooeyGpuField {
+  GooeyGpuField({
+    required this.values,
+    required this.cols,
+    required this.rows,
+    required this.ax,
+    required this.bx,
+    required this.ay,
+    required this.by,
+    required this.padded,
+    required this.distanceScale,
+  });
+
+  /// Signed distances, row by row ([cols] × [rows]), in the field's own units.
+  final Float32List values;
+  final int cols, rows;
+
+  /// Maps a scene point to grid coordinates: gx = x·ax + bx, gy = y·ay + by.
+  final double ax, bx, ay, by;
+
+  /// The sampled area in scene coordinates (outside it, the distance to it is
+  /// added).
+  final Rect padded;
+
+  /// Multiply a field distance by this to get scene pixels.
+  final double distanceScale;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +165,9 @@ class _RoundedRectSdf extends GooeySdf {
 
   @override
   double get roundedRectRadius => r;
+
+  @override
+  GooeyGpuShape get gpu => GooeyGpuShape.roundedRect(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +242,9 @@ class _RingSdf extends GooeySdf {
     }
     return p;
   }
+
+  @override
+  GooeyGpuShape get gpu => GooeyGpuShape.ring(_outer, _half ?? 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +368,11 @@ class _PolygonSdf extends GooeySdf {
 
   @override
   late final Path path = _roundedPolygonPath(_v, _round);
+
+  @override
+  GooeyGpuShape? get gpu => _v.length ~/ 2 > GooeyGpuShape.maxVertices
+      ? null
+      : GooeyGpuShape.polygon(Float32List.fromList(_v), _round);
 }
 
 /// The outline of polygon [v] (x, y pairs) grown by [r]: every edge moves
@@ -470,6 +555,9 @@ class _PointSdf extends GooeySdf {
 
   @override
   Path get path => Path();
+
+  @override
+  GooeyGpuShape get gpu => const GooeyGpuShape.ring(0, 0);
 }
 
 class _PathSdf extends GooeySdf {
@@ -487,6 +575,28 @@ class _PathSdf extends GooeySdf {
     // Stretching changes distances; scale by the smaller factor so the
     // shape never seems closer than it is.
     return d * math.min(_sx, _sy);
+  }
+
+  @override
+  GooeyGpuShape get gpu {
+    final f = field;
+    final m = _PathField.margin;
+    return GooeyGpuShape.field(GooeyGpuField(
+      values: f.values,
+      cols: f.cols,
+      rows: f.rows,
+      ax: 1 / (_sx * f.cell),
+      bx: (-rect.left / _sx + m) / f.cell,
+      ay: 1 / (_sy * f.cell),
+      by: (-rect.top / _sy + m) / f.cell,
+      padded: Rect.fromLTRB(
+        rect.left - m * _sx,
+        rect.top - m * _sy,
+        rect.left + (f.size.width + m) * _sx,
+        rect.top + (f.size.height + m) * _sy,
+      ),
+      distanceScale: math.min(_sx, _sy),
+    ));
   }
 
   @override

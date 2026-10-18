@@ -13,6 +13,7 @@ import 'contact.dart';
 import 'field.dart';
 import 'geometry.dart';
 import 'neck.dart';
+import 'shader.dart';
 import 'shape.dart';
 
 /// Which gooey effects a [GooeyScene] uses and how they behave. Each effect
@@ -186,6 +187,8 @@ class GooeyScene {
         _quality = quality {
     repaint = Listenable.merge([motion, _ping]);
     motion.addListener(_onMotion);
+    // Repaint when e.g. a path's distance field reaches the GPU.
+    GooeyShader.updates.addListener(_ping.ping);
     quality?.addListener(_onQuality);
     _style = _limited(style);
     _styleNotifier = ValueNotifier(_style);
@@ -512,6 +515,7 @@ class GooeyScene {
   }
 
   void dispose() {
+    GooeyShader.updates.removeListener(_ping.ping);
     _quality?.removeListener(_onQuality);
     _styleNotifier.dispose();
     _motion.removeListener(_onMotion);

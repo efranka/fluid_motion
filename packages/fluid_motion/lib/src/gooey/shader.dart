@@ -1,37 +1,48 @@
+import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import 'field.dart';
+import 'geometry.dart';
 import 'neck.dart';
 import 'shape.dart';
 
-/// The GPU version of the gooey neck (`shaders/gooey.frag`), for rounded
-/// rects.
+/// The GPU side of the gooey system (`shaders/gooey.frag`): necks and shape
+/// surfaces – with colour blending and blobs – for every built-in outline.
 ///
 /// Load it once at startup with [load]. Until it is loaded – or if the
-/// platform does not support shaders – the CPU version is used
-/// automatically, so nothing breaks.
+/// platform does not support shaders, or for a custom geometry without a
+/// [GooeySdf.gpu] description – the CPU version is used automatically, so
+/// nothing breaks.
 abstract final class GooeyShader {
   static const assetKey = 'packages/fluid_motion/shaders/gooey.frag';
 
   static ui.FragmentProgram? _program;
-  static final List<ui.FragmentShader> _shaders = [];
+  static ui.Image? _empty;
   static Object? _error;
 
   /// Whether the shader is loaded and ready.
-  static bool get isReady => _program != null;
+  static bool get isReady => _program != null && _empty != null;
 
   /// The error if loading failed (the CPU version is used instead).
   static Object? get error => _error;
 
+  /// Notifies when something new became drawable on the GPU (e.g. a path's
+  /// distance field finished uploading), so scenes can repaint.
+  static Listenable get updates => _updates;
+  static final _updates = _Updates();
+
   /// Load the shader. If it fails, the error is logged and the CPU version
   /// is used.
   static Future<bool> load() async {
-    if (_program != null) return true;
+    if (isReady) return true;
     try {
-      _program = await ui.FragmentProgram.fromAsset(assetKey);
+      _program ??= await ui.FragmentProgram.fromAsset(assetKey);
+      // Samplers must always be bound; unused ones get this 1×1 image.
+      _empty ??= await _image(Uint8List.fromList([128, 128, 128, 255]), 1, 1);
       return true;
     } catch (e) {
       _error = e;
@@ -40,79 +51,196 @@ abstract final class GooeyShader {
     }
   }
 
-  // One shader instance per neck painted in the same frame (uniforms belong
-  // to the instance, so two necks must not share one).
-  static ui.FragmentShader _shaderFor(int slot) {
-    while (_shaders.length <= slot) {
-      _shaders.add(_program!.fragmentShader());
-    }
-    return _shaders[slot];
+  /// A new shader instance. Uniforms belong to the instance, so each thing
+  /// painted in the same frame – and each retained picture – needs its own.
+  static ui.FragmentShader newShader() => _program!.fragmentShader();
+
+  // -------------------------------------------------------------------------
+  // What the GPU can draw
+  // -------------------------------------------------------------------------
+
+  /// Whether [shape] can be drawn on the GPU right now. A path's distance
+  /// field is uploaded in the background the first time it is asked for;
+  /// until then this returns false (and [updates] notifies when it is
+  /// ready).
+  static bool canDraw(GooeyShape shape) {
+    if (!isReady) return false;
+    final g = shape.sdf.gpu;
+    if (g == null) return false;
+    if (g.type == GooeyGpuShape.typeField) return _textureFor(g.field!) != null;
+    return true;
   }
 
-  /// Paint the neck between [a] and [b]. [slot] must be unique for each neck
-  /// painted in the same frame (e.g. the pair's number).
-  static void paint(
+  static final _textures = Expando<ui.Image>();
+  static final _pending = Expando<bool>();
+
+  /// The field's distances range ±[_fieldRange] field units over 0..255.
+  static const _fieldRange = 32.0;
+
+  static ui.Image? _textureFor(GooeyGpuField f) {
+    final ready = _textures[f.values];
+    if (ready != null) return ready;
+    if (_pending[f.values] == true) return null;
+    _pending[f.values] = true;
+    final bytes = Uint8List(f.cols * f.rows * 4);
+    for (var i = 0; i < f.values.length; i++) {
+      final v =
+          (127.5 + f.values[i] / _fieldRange * 127.5).round().clamp(0, 255);
+      bytes[4 * i] = v;
+      bytes[4 * i + 1] = v;
+      bytes[4 * i + 2] = v;
+      bytes[4 * i + 3] = 255;
+    }
+    _image(bytes, f.cols, f.rows).then((image) {
+      _textures[f.values] = image;
+      _updates.ping();
+    });
+    return null;
+  }
+
+  static Future<ui.Image> _image(Uint8List rgba, int width, int height) {
+    final done = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+      rgba,
+      width,
+      height,
+      ui.PixelFormat.rgba8888,
+      done.complete,
+    );
+    return done.future;
+  }
+
+  // -------------------------------------------------------------------------
+  // Painting
+  // -------------------------------------------------------------------------
+
+  /// Paint the neck between [a] and [b] (in scene coordinates) with [shader].
+  static void paintNeck(
     Canvas canvas,
-    int slot,
+    ui.FragmentShader shader,
     GooeyShape a,
     GooeyShape b,
     GooeyNeckGeometry g, {
     double blendWidth = 0,
+    double pixelRatio = 1,
   }) {
-    final s = _shaderFor(slot);
-    var i = 0;
-    void f(double v) => s.setFloat(i++, v);
-    void rect(Rect r) {
-      f(r.left);
-      f(r.top);
-      f(r.right);
-      f(r.bottom);
-    }
+    final w = _UniformWriter(shader);
+    w.vec4(0, g.k, GooeyNeckGeometry.overlap, GooeyNeckGeometry.addsAtLeast);
+    w.vec4(blendWidth, 0, 0, pixelRatio);
+    w.vec4(g.focus.dx, g.focus.dy, g.bumpAmplitude,
+        1 / (g.bumpSigma * g.bumpSigma));
+    w.color(a.color);
+    w.color(b.color);
+    _shape(w, a, 0);
+    _shape(w, b, 1);
+    canvas.drawRect(g.region, Paint()..shader = shader);
+  }
 
-    void rip(GooeyShape shape) {
-      final r = shape.strongestRipple;
-      if (r == null) {
-        f(0);
-        f(0);
-        f(0);
-        f(0);
+  /// Paint the surface of [shape] on a canvas whose origin is the shape's
+  /// top left corner, blending towards [other] over [blendWidth] px (0 = the
+  /// shape's own colour only).
+  static void paintSurface(
+    Canvas canvas,
+    ui.FragmentShader shader,
+    GooeyShape shape, {
+    GooeyShape? other,
+    double blendWidth = 0,
+    double pixelRatio = 1,
+  }) {
+    final origin = shape.rect.topLeft;
+    final w = _UniformWriter(shader);
+    w.vec4(1, 1, 0, 0);
+    w.vec4(other == null ? 0 : blendWidth, origin.dx, origin.dy, pixelRatio);
+    w.vec4(0, 0, 0, 1);
+    w.color(shape.color);
+    w.color(other?.color ?? shape.color);
+    _shape(w, shape, 0);
+    _shape(w, other, 1);
+    final area = shape.rect.inflate(shape.maxBulge + 2).shift(-origin);
+    canvas.drawRect(area, Paint()..shader = shader);
+  }
+
+  /// Writes one shape's uniforms: rect, kind, three ripples, 24 vertices –
+  /// and binds its texture (or the empty one) to sampler [slot].
+  static void _shape(_UniformWriter w, GooeyShape? s, int slot) {
+    final g = s?.sdf.gpu;
+    ui.Image texture = _empty!;
+    if (s == null || g == null) {
+      w.vec4(0, 0, 0, 0);
+      w.vec4(-1, 0, 0, 0);
+      w.zeros(12 + 2 * GooeyGpuShape.maxVertices);
+      w.shader.setImageSampler(slot, texture);
+      return;
+    }
+    final r = s.rect;
+    w.vec4(r.left, r.top, r.right, r.bottom);
+    final verts = g.vertices;
+    w.vec4(g.type.toDouble(), g.p1, g.p2,
+        verts == null ? 0 : (verts.length ~/ 2).toDouble());
+
+    // The three strongest ripples.
+    final ripples = [...s.ripples]
+      ..sort((x, y) => y.amplitude.abs().compareTo(x.amplitude.abs()));
+    for (var i = 0; i < 3; i++) {
+      if (i < ripples.length) {
+        final rp = ripples[i];
+        w.vec4(rp.center.dx, rp.center.dy, rp.amplitude,
+            1 / (rp.radius * rp.radius));
       } else {
-        f(r.center.dx);
-        f(r.center.dy);
-        f(r.amplitude);
-        f(1 / (r.radius * r.radius));
+        w.vec4(0, 0, 0, 0);
       }
     }
 
-    void color(Color c) {
-      f(c.r);
-      f(c.g);
-      f(c.b);
-      f(c.a);
+    // Vertices – or, for a field, its mapping into the texture.
+    var written = 0;
+    final f = g.field;
+    if (f != null) {
+      texture = _textureFor(f) ?? _empty!;
+      w
+        ..vec4(f.ax, f.ay, f.bx, f.by)
+        ..vec4(f.padded.left, f.padded.top, f.padded.right, f.padded.bottom)
+        ..vec4(2 * _fieldRange * f.distanceScale, f.cols.toDouble(),
+            f.rows.toDouble(), 0);
+      written = 12;
+    } else if (verts != null) {
+      for (final v in verts) {
+        w.float(v);
+      }
+      written = verts.length;
     }
-
-    rect(a.rect); // uRectA
-    rect(b.rect); // uRectB
-    f(a.cornerRadius); // uRadius
-    f(b.cornerRadius);
-    rip(a); // uRipA
-    rip(b); // uRipB
-    f(g.focus.dx); // uBump
-    f(g.focus.dy);
-    f(g.bumpAmplitude);
-    f(1 / (g.bumpSigma * g.bumpSigma));
-    f(g.k); // uParams
-    f(GooeyNeckGeometry.overlap);
-    f(GooeyNeckGeometry.addsAtLeast);
-    f(blendWidth);
-    color(a.color); // uColA
-    color(b.color); // uColB
-
-    canvas.drawRect(g.region, Paint()..shader = s);
+    w.zeros(2 * GooeyGpuShape.maxVertices - written);
+    w.shader.setImageSampler(slot, texture);
   }
 
-  /// The width over which the shader blends colours for the pair (i, j) –
-  /// the same as the colour field, so neck and shapes line up.
+  /// The width over which colours blend for the pair (i, j) – the same as
+  /// the colour field, so neck and shapes line up.
   static double blendWidthFor(GooeyColorField? field, int i, int j) =>
       field == null ? 0 : field.widthOf(i, j);
+}
+
+class _Updates extends ChangeNotifier {
+  void ping() => notifyListeners();
+}
+
+class _UniformWriter {
+  _UniformWriter(this.shader);
+  final ui.FragmentShader shader;
+  int _i = 0;
+
+  void float(double v) => shader.setFloat(_i++, v);
+
+  void vec4(double a, double b, double c, double d) {
+    float(a);
+    float(b);
+    float(c);
+    float(d);
+  }
+
+  void color(Color c) => vec4(c.r, c.g, c.b, c.a);
+
+  void zeros(int n) {
+    for (var k = 0; k < n; k++) {
+      float(0);
+    }
+  }
 }

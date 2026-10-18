@@ -27,7 +27,7 @@ fluid_motion/
 │  │                        GooeyShader (GPU) + CPU fallback, field, contour, contact
 │  ├─ lib/src/quality/      MotionQuality – automatic quality
 │  ├─ lib/src/tokens.dart   MotionTokens + MotionScope
-│  ├─ shaders/gooey.frag    the GPU neck
+│  ├─ shaders/gooey.frag    the GPU shader (necks and surfaces)
 │  └─ test/
 └─ example/                 demo app: a morphing bottom bar and a shapes playground
 ```
@@ -120,8 +120,9 @@ motion".
 | `GooeyPathGeometry((size) => path)` | Any `Path` |
 
 Every geometry is a signed distance field, so you can add your own by
-implementing `GooeyGeometry`. Rounded rects (and circles in a square) get the
-GPU shader. Every other outline uses the CPU version.
+implementing `GooeyGeometry`. All built-in outlines are drawn on the GPU. A
+custom geometry is drawn on the GPU if its `GooeySdf.gpu` returns one of the
+`GooeyGpuShape` kinds, and on the CPU otherwise.
 
 ### Motion tokens
 
@@ -169,10 +170,19 @@ if (quality.allows(glow)) { /* paint the glow */ }
 
 ## GPU and CPU
 
-The GPU shader assumes that `FlutterFragCoord()` is in local logical
-coordinates. If the neck looks offset or wrongly scaled with the GPU but
-right with the CPU (switch with "Neck on GPU" in the demo's debug panel), that
-assumption does not hold on that platform. Please open an issue.
+When the shader is loaded (`GooeyShader.load()`), everything gooey is drawn on
+the GPU in one shader for every built-in outline: the necks, and the shapes
+themselves with colour blending and blobs. A path's distance field is
+uploaded as a small texture the first time it is used.
+
+The CPU version is only a fallback. It is used if the shader cannot load (or
+in widget tests), for a polygon with more than 24 corners, and for custom
+geometries without a GPU description. It draws the same thing.
+
+The shader assumes that `FlutterFragCoord()` is in local logical coordinates.
+If the shapes look offset or wrongly scaled with the GPU but right with the
+CPU (switch with "Draw on GPU" in the demo's debug panel), that assumption
+does not hold on that platform. Please open an issue.
 
 ## License
 

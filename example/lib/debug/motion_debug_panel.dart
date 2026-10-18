@@ -127,7 +127,7 @@ class _MotionDebugPanelState extends State<MotionDebugPanel> {
                         ),
                       SwitchListTile(
                         dense: true,
-                        title: const Text('Neck on GPU'),
+                        title: const Text('Draw on GPU'),
                         subtitle: widget.shaderReady
                             ? null
                             : const Text('The shader is not loaded'),
