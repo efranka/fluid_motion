@@ -1,0 +1,27 @@
+name: fluid_motion
+description: >-
+  Organic, physics-driven animation for Flutter: springs with graded bounce,
+  "the finger drives, the spring takes over", gooey shapes that flow together
+  (any outline), colour blending, blobs, dissolving content and automatic
+  quality.
+homepage: https://github.com/efranka/fluid_motion
+repository: https://github.com/efranka/fluid_motion
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  shaders:
+    - shaders/gooey.frag

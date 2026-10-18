@@ -1,0 +1,25 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+!example/pubspec.lock
+
+# IDEs and OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Generated platform folders (recreate with `flutter create .` in example/)
+example/android/
+example/ios/
+example/web/
+example/macos/
+example/linux/
+example/windows/
+example/README.md
