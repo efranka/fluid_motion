@@ -158,6 +158,22 @@ if (quality.allows(glow)) { /* paint the glow */ }
 
 `MotionQualityScope` passes the quality down the widget tree.
 
+## No stutter the first time
+
+The first time the GPU draws something new (the gooey shader, a blur of a
+certain strength, a gradient mask), it compiles a small program for it in the
+middle of the animation. That is why an animation can stutter the first
+couple of times and then run smoothly. It is most noticeable on the web.
+
+`MotionWarmUp` draws every technique once, faintly and hidden behind your
+app, during the first frames, so the programs are ready before anyone
+touches anything:
+
+```dart
+await GooeyShader.load();
+runApp(MotionScope(child: MotionWarmUp(child: MaterialApp(...))));
+```
+
 ## Performance notes
 
 - Measure on a real phone in release mode. Debug builds are much slower,

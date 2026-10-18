@@ -10,6 +10,8 @@
 ///  • [MotionTokens], [MotionScope] – a shared "material" for the whole app
 ///  • [MotionQuality], [MotionFeature] – automatic quality: expensive
 ///    effects switch off when the device cannot keep up, and back on later
+///  • [MotionWarmUp] – prepares the GPU at startup, so animations do not
+///    stutter the first time they run
 ///
 /// Widgets
 ///  • [PressScale] / [PressSpring] – press feedback (also shared by layers)
@@ -50,6 +52,7 @@ export 'src/gooey/shape.dart';
 export 'src/gooey/widgets.dart';
 export 'src/quality/motion_quality.dart';
 export 'src/tokens.dart';
+export 'src/warm_up.dart';
 export 'src/widgets/motion_transform.dart';
 export 'src/widgets/press.dart';
 export 'src/widgets/segment.dart';

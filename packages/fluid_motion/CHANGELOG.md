@@ -17,3 +17,5 @@ First release.
   blend and blobs) for every built-in outline, with an automatic CPU fallback.
 - `MotionQuality`: automatic quality that switches expensive effects off when
   the device cannot keep up (including Low Power Mode) and back on later.
+- `MotionWarmUp`: prepares the GPU at startup, so animations do not stutter
+  the first time they run.

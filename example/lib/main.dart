@@ -20,17 +20,21 @@ class FluidMotionDemo extends StatelessWidget {
         // One place to tune the whole app's "material" (springs, press,
         // timings).
         tokens: MotionTokens.standard,
-        child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'fluid_motion',
-          theme: ThemeData(
-            useMaterial3: true,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFFCBC3F5),
-              brightness: Brightness.dark,
+        // Draws every effect once, hidden, during the first frames, so the
+        // GPU has prepared them before the first animation runs.
+        child: MotionWarmUp(
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'fluid_motion',
+            theme: ThemeData(
+              useMaterial3: true,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFFCBC3F5),
+                brightness: Brightness.dark,
+              ),
             ),
+            home: const DemoHome(),
           ),
-          home: const DemoHome(),
         ),
       );
 }
