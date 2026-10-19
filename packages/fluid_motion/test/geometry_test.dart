@@ -130,6 +130,32 @@ void main() {
       expect(GooeyContact.boxGap(a.rect, b.rect), lessThan(10));
     });
 
+    test('a shape deep inside a ring still overlaps it', () {
+      // Ring: outer radius 50, inner radius 30, centred at (50, 50).
+      final ring =
+          GooeyShape(_box, _c, geometry: const GooeyRing(thickness: 0.4));
+      // A circle (radius 20) centred on the band, at the hole's edge.
+      final circle = GooeyShape(
+        const Rect.fromLTWH(60, 30, 40, 40),
+        _c,
+        geometry: const GooeyCircle(),
+      );
+      expect(GooeyContact.measure(circle, ring).$1, 0);
+      expect(GooeyContact.measure(ring, circle).$1, 0);
+    });
+
+    test('a small shape inside the hole of a ring is apart from it', () {
+      final ring =
+          GooeyShape(_box, _c, geometry: const GooeyRing(thickness: 0.4));
+      // Radius 10 in the middle of a hole with radius 30: 20 px apart.
+      final dot = GooeyShape(
+        const Rect.fromLTWH(40, 40, 20, 20),
+        _c,
+        geometry: const GooeyCircle(),
+      );
+      expect(GooeyContact.measure(dot, ring).$1, closeTo(20, 0.5));
+    });
+
     test('overlapping shapes have no gap', () {
       final a = GooeyShape(_box, _c, geometry: const GooeyStar());
       final b = GooeyShape(

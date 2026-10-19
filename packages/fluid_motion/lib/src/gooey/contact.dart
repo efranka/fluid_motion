@@ -31,30 +31,87 @@ class GooeyContact {
       );
 
   /// The gap between two shapes' edges and the point between them where
-  /// they are closest – for any outline.
+  /// they are closest – for any outline, including ones with holes (a ring)
+  /// or notches (a star).
   ///
   /// Two rounded rects use the exact (and cheapest) rect calculation. Other
-  /// shapes find their closest points by alternately projecting onto each
-  /// other's edge along the distance fields: exact for convex shapes, a
-  /// close approximation for the rest.
+  /// shapes search for the point that is closest to both at once: where the
+  /// larger of the two distances is smallest. At that point each distance
+  /// is half the gap; if it is inside both, the shapes overlap. The search
+  /// samples the area around both shapes and then refines, so it never
+  /// reports a contact that is not there, and it does not get lost in a
+  /// hole the way following one edge to the other can.
+  ///
+  /// Results are cached per pair of shapes (shapes are per-frame snapshots),
+  /// so every painter in a frame shares one measurement.
   static (double gap, Offset focus) measure(GooeyShape a, GooeyShape b) {
     if (a.isRoundedRect && b.isRoundedRect) {
       return (boxGap(a.rect, b.rect), focusBetween(a.rect, b.rect));
     }
-    // Far apart: the bounding boxes are good enough and much cheaper.
-    final box = boxGap(a.rect, b.rect);
-    if (box > 64) return (box, focusBetween(a.rect, b.rect));
+    final cachedA = _cache[a];
+    if (cachedA != null && identical(cachedA.$1, b)) return cachedA.$2;
+    final cachedB = _cache[b];
+    if (cachedB != null && identical(cachedB.$1, a)) return cachedB.$2;
+    final result = _search(a, b);
+    _cache[a] = (b, result);
+    return result;
+  }
 
-    var q = a.closestOnEdge(b.rect.center);
-    var r = b.closestOnEdge(q);
-    q = a.closestOnEdge(r);
-    r = b.closestOnEdge(q);
-    final focus = (q + r) / 2;
-    // Overlapping when an edge point of one lies inside the other.
-    if (b.distance(q.dx, q.dy) <= 0 || a.distance(r.dx, r.dy) <= 0) {
-      return (0, focus);
+  static final _cache = Expando<(GooeyShape, (double, Offset))>();
+
+  /// How far beyond the shapes the search looks (px). Gaps up to twice this
+  /// are measured exactly; larger ones only matter as "far apart".
+  static const _searchReach = 16.0;
+  static const _samples = 20;
+
+  static (double, Offset) _search(GooeyShape a, GooeyShape b) {
+    final area = a.rect
+        .inflate(_searchReach + a.maxBulge)
+        .intersect(b.rect.inflate(_searchReach + b.maxBulge));
+    if (area.width <= 0 || area.height <= 0) {
+      return (boxGap(a.rect, b.rect), focusBetween(a.rect, b.rect));
     }
-    return ((q - r).distance, focus);
+    double worse(double x, double y) =>
+        math.max(a.distance(x, y), b.distance(x, y));
+
+    // Coarse: a grid over the area both shapes can reach.
+    final sx = area.width / _samples, sy = area.height / _samples;
+    var best = double.infinity, bx = area.center.dx, by = area.center.dy;
+    for (var j = 0; j <= _samples; j++) {
+      final y = area.top + j * sy;
+      for (var i = 0; i <= _samples; i++) {
+        final x = area.left + i * sx;
+        final v = worse(x, y);
+        if (v < best) {
+          best = v;
+          bx = x;
+          by = y;
+        }
+      }
+    }
+    // Fine: search around the best point with ever smaller steps.
+    var step = math.max(sx, sy);
+    for (var round = 0; round < 7; round++) {
+      step /= 2;
+      var cx = bx, cy = by;
+      for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+          if (dx == 0 && dy == 0) continue;
+          final x = bx + dx * step, y = by + dy * step;
+          final v = worse(x, y);
+          if (v < best) {
+            best = v;
+            cx = x;
+            cy = y;
+          }
+        }
+      }
+      bx = cx;
+      by = cy;
+    }
+    final focus = Offset(bx, by);
+    // Inside both: they overlap. Otherwise each distance is half the gap.
+    return (best <= 0 ? 0.0 : 2 * best, focus);
   }
 
   /// [meetAt] is the gap at which the rects start to connect.
