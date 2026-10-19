@@ -191,6 +191,11 @@ the GPU in one shader for every built-in outline: the necks, and the shapes
 themselves with colour blending and blobs. A path's distance field is
 uploaded as a small texture the first time it is used.
 
+A shape that touches several others blends its colour towards all of them at
+once, up to `GooeyShader.maxNeighbours` (3), the number of neighbour slots in
+the shader. `GooeyStyle.blendNeighbours` sets how many are used (0 to 3).
+`MotionQuality` lowers it to 1 before it switches colour blending off.
+
 The CPU version is only a fallback. It is used if the shader cannot load (or
 in widget tests), for a polygon with more than 24 corners, and for custom
 geometries without a GPU description. It draws the same thing.

@@ -138,7 +138,7 @@ class _WarmUpPainter extends CustomPainter {
       canvas.save();
       canvas.translate(a.rect.left, a.rect.top);
       GooeyShader.paintSurface(canvas, GooeyShader.newShader(), a,
-          other: b, blendWidth: 20);
+          others: [b], blendWidths: const [20]);
       canvas.restore();
     }
 

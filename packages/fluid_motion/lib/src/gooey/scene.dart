@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/physics.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -37,7 +35,11 @@ class GooeyStyle {
     this.contentReach = 14,
     this.contentDepth = 22,
     this.maxBlobsPerShape = 3,
-  });
+    this.blendNeighbours = GooeyShader.maxNeighbours,
+  }) : assert(
+          blendNeighbours >= 0 && blendNeighbours <= GooeyShader.maxNeighbours,
+          'blendNeighbours must be between 0 and GooeyShader.maxNeighbours',
+        );
 
   /// No effects – e.g. for "Reduce motion".
   static const off = GooeyStyle(
@@ -89,6 +91,14 @@ class GooeyStyle {
 
   final int maxBlobsPerShape;
 
+  /// How many neighbours each shape's colour blends towards at once (0 to
+  /// [GooeyShader.maxNeighbours]). With 1, a shape touching two others only
+  /// blends towards the most connected one, and you can see an edge towards
+  /// the other; with 0 the shapes keep their own colours (the neck still
+  /// blends). [MotionQuality] lowers it to 1 before it switches colour
+  /// blending off entirely ([MotionFeature.multiBlend]).
+  final int blendNeighbours;
+
   double get meetAt => neckStyle.meetAt;
 
   // Loose springs, so the blob wobbles a couple of times.
@@ -105,6 +115,7 @@ class GooeyStyle {
     bool? useShader,
     GooeyNeckStyle? neckStyle,
     double? blendWidth,
+    int? blendNeighbours,
   }) =>
       GooeyStyle(
         neck: neck ?? this.neck,
@@ -123,6 +134,7 @@ class GooeyStyle {
         contentReach: contentReach,
         contentDepth: contentDepth,
         maxBlobsPerShape: maxBlobsPerShape,
+        blendNeighbours: blendNeighbours ?? this.blendNeighbours,
       );
 }
 
@@ -255,6 +267,9 @@ class GooeyScene {
       colorBlend: s.colorBlend && q.allows(MotionFeature.colorBlend),
       blob: s.blob && q.allows(MotionFeature.blob),
       contentBlend: s.contentBlend && q.allows(MotionFeature.contentBlend),
+      blendNeighbours: q.allows(MotionFeature.multiBlend)
+          ? s.blendNeighbours
+          : (s.blendNeighbours < 1 ? s.blendNeighbours : 1),
     );
   }
 
@@ -343,6 +358,7 @@ class GooeyScene {
       s,
       meetAt: _style.meetAt,
       maxWidth: _style.blendWidth,
+      neighbours: math.max(1, _style.blendNeighbours),
     );
     if (_cacheable && _cacheValid) _field = f;
     return f;

@@ -58,28 +58,20 @@ class GooeyFillPainter extends CustomPainter {
     final o = s.rect.topLeft;
     final f = scene.field;
 
+    final neighbours = scene.style.blendNeighbours;
+    final blends = f != null && f.mixing && neighbours > 0;
+
     if (scene.style.useShader && GooeyShader.canDraw(s)) {
-      // The other shape this one is most connected to, if any.
-      GooeyShape? other;
-      var width = 0.0;
-      if (f != null && f.mixing) {
-        var best = 0.0;
-        for (var j = 0; j < shapes.length; j++) {
-          final st = f.strengthOf(index, j);
-          if (st > best) {
-            best = st;
-            other = shapes[j];
-            width = f.widthOf(index, j);
-          }
-        }
-      }
-      if (other == null || GooeyShader.canDraw(other)) {
+      // The shapes this one is most connected to – it blends towards all of
+      // them at once.
+      final near = blends ? f.neighboursOf(index, neighbours) : const <int>[];
+      if (near.every((j) => GooeyShader.canDraw(shapes[j]))) {
         GooeyShader.paintSurface(
           canvas,
           _shader ??= GooeyShader.newShader(),
           s,
-          other: other,
-          blendWidth: width,
+          others: [for (final j in near) shapes[j]],
+          blendWidths: [for (final j in near) f!.widthOf(index, j)],
           pixelRatio: pixelRatio,
         );
         return;
@@ -103,8 +95,7 @@ class GooeyFillPainter extends CustomPainter {
     void clipShape() =>
         path == null ? canvas.clipRRect(rrect) : canvas.clipPath(path);
 
-    var active =
-        f != null && f.mixing ? f.activeRect(index).shift(-o) : Rect.zero;
+    var active = blends ? f.activeRect(index).shift(-o) : Rect.zero;
     if (path != null && active.width > 0 && active.height > 0) {
       active = active.intersect(path.getBounds().inflate(1));
     }

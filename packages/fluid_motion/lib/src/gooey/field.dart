@@ -21,14 +21,18 @@ import 'shape.dart';
 /// (each shape has its own colour), connected the blend spreads into the
 /// shapes.
 ///
-/// With more than two shapes, each point blends the two nearest.
+/// With more than two shapes, each point blends the nearest shape with up
+/// to [neighbours] of the next nearest at once – so a shape that touches two
+/// others blends towards both, without an edge where one takes over.
 class GooeyColorField {
   GooeyColorField(
     this.shapes, {
     required double meetAt,
     this.minWidth = 4,
     this.maxWidth = 60,
-  }) : _n = shapes.length {
+    this.neighbours = 3,
+  })  : assert(neighbours >= 1, 'a field blends at least two shapes'),
+        _n = shapes.length {
     _strength = Float64List(_n * _n);
     var maxStrength = 0.0;
     for (var i = 0; i < _n; i++) {
@@ -52,6 +56,10 @@ class GooeyColorField {
 
   final List<GooeyShape> shapes;
   final double minWidth, maxWidth;
+
+  /// How many other shapes each point blends towards (1 = only the second
+  /// nearest).
+  final int neighbours;
   final int _n;
   late final Float64List _strength;
   late final Int32List _argb;
@@ -70,46 +78,72 @@ class GooeyColorField {
   /// Whether any shapes are connected enough for their colours to blend.
   bool get mixing => strength > 0.001;
 
+  /// The shapes that shape [index] is connected to, most connected first –
+  /// at most [max] of them.
+  List<int> neighboursOf(int index, int max) {
+    if (max <= 0) return const [];
+    final result = <int>[
+      for (var j = 0; j < _n; j++)
+        if (j != index && strengthOf(index, j) > 0.001) j,
+    ]..sort((x, y) => strengthOf(index, y).compareTo(strengthOf(index, x)));
+    return result.length > max ? result.sublist(0, max) : result;
+  }
+
   /// The colour at a point as a packed ARGB int (no objects allocated).
+  ///
+  /// The nearest shape has weight 1; each of the next nearest (up to
+  /// [neighbours]) pulls the colour towards itself with weight u/(1-u),
+  /// where u is how far the blend between the two has come. With one
+  /// neighbour that is exactly a blend of the two nearest; with more, the
+  /// pulls add up smoothly.
   int argbAt(double x, double y) {
     if (_n == 0) return 0;
     if (_n == 1) return _argb[0];
-    // The two nearest shapes.
-    var i0 = 0, i1 = 1;
+    var i0 = 0;
     for (var k = 0; k < _n; k++) {
-      _dist[k] = shapes[k].distance(x, y);
+      final d = shapes[k].distance(x, y);
+      _dist[k] = d;
+      if (d < _dist[i0]) i0 = k;
     }
-    if (_dist[1] < _dist[0]) {
-      i0 = 1;
-      i1 = 0;
-    }
-    for (var k = 2; k < _n; k++) {
-      if (_dist[k] < _dist[i0]) {
-        i1 = i0;
-        i0 = k;
-      } else if (_dist[k] < _dist[i1]) {
-        i1 = k;
+    final c0 = _argb[i0];
+    var total = 1.0;
+    var a = ((c0 >> 24) & 0xFF).toDouble(), r = ((c0 >> 16) & 0xFF).toDouble();
+    var g = ((c0 >> 8) & 0xFF).toDouble(), b = (c0 & 0xFF).toDouble();
+    // The next nearest shapes, one at a time (marked as used with infinity).
+    final d0 = _dist[i0];
+    _dist[i0] = double.infinity;
+    final count = math.min(neighbours, _n - 1);
+    for (var m = 0; m < count; m++) {
+      var k = -1;
+      for (var q = 0; q < _n; q++) {
+        if (_dist[q] != double.infinity && (k < 0 || _dist[q] < _dist[k])) {
+          k = q;
+        }
       }
+      if (k < 0) break;
+      final u = blendBetween(d0, _dist[k], widthOf(i0, k));
+      _dist[k] = double.infinity;
+      if (u <= 0) continue;
+      final weight = math.min(u, 0.999) / (1 - math.min(u, 0.999));
+      final c = _argb[k];
+      a += ((c >> 24) & 0xFF) * weight;
+      r += ((c >> 16) & 0xFF) * weight;
+      g += ((c >> 8) & 0xFF) * weight;
+      b += (c & 0xFF) * weight;
+      total += weight;
     }
-    final w = widthOf(i0, i1);
-    var u = (0.5 + (_dist[i0] - _dist[i1]) / (2 * w)).clamp(0.0, 1.0);
-    u = u * u * (3 - 2 * u);
-    return _lerpArgb(_argb[i0], _argb[i1], u);
+    int ch(double v) => (v / total).round().clamp(0, 255);
+    return (ch(a) << 24) | (ch(r) << 16) | (ch(g) << 8) | ch(b);
+  }
+
+  /// How far (0..1) the colour at a point has moved from the shape at
+  /// distance [da] towards the one at distance [db], over [width] px.
+  static double blendBetween(double da, double db, double width) {
+    final u = (0.5 + (da - db) / (2 * width)).clamp(0.0, 1.0);
+    return u * u * (3 - 2 * u);
   }
 
   Color colorAt(double x, double y) => Color(argbAt(x, y));
-
-  static int _lerpArgb(int a, int b, double t) {
-    if (t <= 0) return a;
-    final aA = (a >> 24) & 0xFF, aR = (a >> 16) & 0xFF;
-    final aG = (a >> 8) & 0xFF, aB = a & 0xFF;
-    final bA = (b >> 24) & 0xFF, bR = (b >> 16) & 0xFF;
-    final bG = (b >> 8) & 0xFF, bB = b & 0xFF;
-    return ((aA + (bA - aA) * t).round() << 24) |
-        ((aR + (bR - aR) * t).round() << 16) |
-        ((aG + (bG - aG) * t).round() << 8) |
-        (aB + (bB - aB) * t).round();
-  }
 
   /// The part of shape [index] where the colour differs from the shape's own
   /// at all (in field coordinates). Outside it the blend is 0, so the shape

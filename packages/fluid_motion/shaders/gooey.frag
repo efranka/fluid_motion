@@ -3,7 +3,8 @@
 //  mode 0: the neck between shape A and shape B (only what the merge ADDS
 //          outside the shapes), coloured from the same blend as the shapes.
 //  mode 1: shape A's own surface – including blobs (ripples) – with its
-//          colour blending into shape B's near a contact.
+//          colour blending into up to three connected neighbours (B, C, D)
+//          near their contacts, all at once.
 //
 // The maths is the same as the CPU version (GooeyNeckCpu, GooeyColorField),
 // computed per pixel. Coordinates: p = FlutterFragCoord() + origin, in scene
@@ -15,10 +16,13 @@
 precision highp float;
 
 uniform vec4 uParams;   // mode, k, overlap, addsAtLeast
-uniform vec4 uParams2;  // blendWidth, origin x, origin y, pixel ratio
+uniform vec4 uParams2;  // blendWidth (neck), origin x, origin y, pixel ratio
 uniform vec4 uBump;     // focus x, focus y, amplitude, 1/sigma²
 uniform vec4 uColA;     // colour (r, g, b, a) 0..1
 uniform vec4 uColB;
+uniform vec4 uColC;
+uniform vec4 uColD;
+uniform vec4 uWidths;   // surface: blend width towards B, C, D (0 = none)
 
 // Shape A
 uniform vec4 uRectA;    // left, top, right, bottom
@@ -32,8 +36,21 @@ uniform vec4 uShapeB;
 uniform vec4 uRipB[3];
 uniform vec2 uVertB[24];
 
+// Shapes C and D: more neighbours for the surface (mode 1 only).
+uniform vec4 uRectC;
+uniform vec4 uShapeC;
+uniform vec4 uRipC[3];
+uniform vec2 uVertC[24];
+
+uniform vec4 uRectD;
+uniform vec4 uShapeD;
+uniform vec4 uRipD[3];
+uniform vec2 uVertD[24];
+
 uniform sampler2D uFieldA;
 uniform sampler2D uFieldB;
+uniform sampler2D uFieldC;
+uniform sampler2D uFieldD;
 
 out vec4 fragColor;
 
@@ -91,6 +108,8 @@ float smin(float a, float b, float k) {
 
 SD_POLYGON(polygonA, uVertA)
 SD_POLYGON(polygonB, uVertB)
+SD_POLYGON(polygonC, uVertC)
+SD_POLYGON(polygonD, uVertD)
 
 // A sampled distance field, bilinearly interpolated by hand (sampling at
 // texel centres works with any texture filtering).
@@ -137,13 +156,38 @@ SD_POLYGON(polygonB, uVertB)
 
 SD_SHAPE(sdA, uRectA, uShapeA, uRipA, uVertA, uFieldA, polygonA)
 SD_SHAPE(sdB, uRectB, uShapeB, uRipB, uVertB, uFieldB, polygonB)
+SD_SHAPE(sdC, uRectC, uShapeC, uRipC, uVertC, uFieldC, polygonC)
+SD_SHAPE(sdD, uRectD, uShapeD, uRipD, uVertD, uFieldD, polygonD)
 
-// The colour field: blend the two nearest shapes over width w.
-vec4 blend(float da, float db, float w) {
+// The colour field between two shapes: how far (0..1) the colour at a point
+// has moved from the shape at distance da towards the one at distance db.
+float towards(float da, float db, float w) {
   float u = clamp(0.5 + (da - db) / (2.0 * w), 0.0, 1.0);
-  u = u * u * (3.0 - 2.0 * u);
-  return mix(uColA, uColB, u);
+  return u * u * (3.0 - 2.0 * u);
 }
+
+vec4 blend(float da, float db, float w) {
+  return mix(uColA, uColB, towards(da, db, w));
+}
+
+// A neighbour's weight relative to shape A (whose weight is 1). With one
+// neighbour this is exactly mix(A, B, u); with more, each neighbour pulls
+// the colour towards itself near its own contact, and the pulls add up
+// smoothly – so a shape touching two others blends towards both, with no
+// edge where one takes over from the other.
+float weight(float da, float dk, float w) {
+  float u = min(towards(da, dk, w), 0.999);
+  return u / (1.0 - u);
+}
+
+// A cheap lower bound for a neighbour's distance: its box, minus whatever
+// its ripples bulge out. When even that is too far away to blend, the exact
+// distance is skipped.
+#define FAR(RECT, RIP, DA, W)                                               \
+  (length(max(abs(p - (RECT.xy + RECT.zw) * 0.5) -                          \
+              (RECT.zw - RECT.xy) * 0.5, 0.0)) -                            \
+       (max(RIP[0].z, 0.0) + max(RIP[1].z, 0.0) + max(RIP[2].z, 0.0)) >=     \
+   DA + W)
 
 void main() {
   vec2 p = FlutterFragCoord().xy + uParams2.yz;
@@ -164,9 +208,26 @@ void main() {
     v = max(max(sm, -(plain + uParams.z)), sm - plain + uParams.w);
     color = blend(da, db, w > 0.0 ? w : 8.0);
   } else {
-    // The surface of shape A.
+    // The surface of shape A, blended towards each connected neighbour.
     v = da;
-    color = (uShapeB.x < -0.5 || w <= 0.0) ? uColA : blend(da, sdB(p), w);
+    vec4 sum = uColA;
+    float total = 1.0;
+    if (uShapeB.x > -0.5 && uWidths.x > 0.0 && !FAR(uRectB, uRipB, da, uWidths.x)) {
+      float k = weight(da, sdB(p), uWidths.x);
+      sum += uColB * k;
+      total += k;
+    }
+    if (uShapeC.x > -0.5 && uWidths.y > 0.0 && !FAR(uRectC, uRipC, da, uWidths.y)) {
+      float k = weight(da, sdC(p), uWidths.y);
+      sum += uColC * k;
+      total += k;
+    }
+    if (uShapeD.x > -0.5 && uWidths.z > 0.0 && !FAR(uRectD, uRipD, da, uWidths.z)) {
+      float k = weight(da, sdD(p), uWidths.z);
+      sum += uColD * k;
+      total += k;
+    }
+    color = sum / total;
   }
 
   // Anti-aliasing over about one device pixel.

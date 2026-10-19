@@ -42,6 +42,9 @@ void main() {
     _frames(heavy, 30, 90);
     heavy.applyPending();
     expect(heavy.dropped, 2);
+    // Blending with several shapes goes before colour blending itself.
+    expect(heavy.allows(MotionFeature.multiBlend), isFalse);
+    expect(heavy.allows(MotionFeature.colorBlend), isTrue);
   });
 
   test('light frames over a longer time switch effects back on', () {
@@ -109,10 +112,11 @@ void main() {
     var notified = 0;
     scene.styleListenable.addListener(() => notified++);
 
-    _frames(q, 30, 90); // two steps: content + colour blend
+    _frames(q, 30, 90); // two steps: content blend + several neighbours
     q.applyPending();
     expect(scene.style.contentBlend, isFalse);
-    expect(scene.style.colorBlend, isFalse);
+    expect(scene.style.blendNeighbours, 1); // only the most connected
+    expect(scene.style.colorBlend, isTrue);
     expect(scene.style.neck, isTrue);
     expect(scene.baseStyle.contentBlend, isTrue);
     expect(notified, 1);

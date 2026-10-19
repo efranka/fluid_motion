@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -24,6 +23,12 @@ class MotionFeature {
   /// Content that blurs and dissolves into another shape ([GooeyContent]).
   static const contentBlend =
       MotionFeature('contentBlend', label: 'Content blend');
+
+  /// A shape's colour blending towards several touching shapes at once
+  /// (instead of only the most connected one) – see
+  /// `GooeyStyle.blendNeighbours`.
+  static const multiBlend =
+      MotionFeature('multiBlend', label: 'Blend with several shapes');
 
   /// Colours blending between shapes.
   static const colorBlend = MotionFeature('colorBlend', label: 'Colour blend');
@@ -96,6 +101,7 @@ class MotionQuality extends ChangeNotifier {
   /// important first.
   static const defaultDropOrder = [
     MotionFeature.contentBlend,
+    MotionFeature.multiBlend,
     MotionFeature.colorBlend,
     MotionFeature.blob,
     MotionFeature.neck,

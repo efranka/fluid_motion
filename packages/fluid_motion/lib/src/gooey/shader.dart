@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -131,31 +130,57 @@ abstract final class GooeyShader {
         1 / (g.bumpSigma * g.bumpSigma));
     w.color(a.color);
     w.color(b.color);
+    w.color(b.color);
+    w.color(b.color);
+    w.vec4(0, 0, 0, 0);
     _shape(w, a, 0);
     _shape(w, b, 1);
+    _shape(w, null, 2);
+    _shape(w, null, 3);
     canvas.drawRect(g.region, Paint()..shader = shader);
   }
 
+  /// How many neighbours a shape's surface can blend towards at once – the
+  /// number of neighbour slots in the shader. Each slot costs a little for
+  /// every pixel of a surface, used or not, so it is kept small; a shape
+  /// rarely touches more than three others at the same time. To raise it,
+  /// add slots to `shaders/gooey.frag` too.
+  static const maxNeighbours = 3;
+
   /// Paint the surface of [shape] on a canvas whose origin is the shape's
-  /// top left corner, blending towards [other] over [blendWidth] px (0 = the
-  /// shape's own colour only).
+  /// top left corner, blending towards each of [others] over the matching
+  /// width in [blendWidths] (px). Empty [others] = the shape's own colour.
+  ///
+  /// At most [maxNeighbours] others are used – pass the most connected
+  /// first.
   static void paintSurface(
     Canvas canvas,
     ui.FragmentShader shader,
     GooeyShape shape, {
-    GooeyShape? other,
-    double blendWidth = 0,
+    List<GooeyShape> others = const [],
+    List<double> blendWidths = const [],
     double pixelRatio = 1,
   }) {
+    assert(
+        others.length == blendWidths.length, 'one blend width per other shape');
+    final n = others.length < maxNeighbours ? others.length : maxNeighbours;
+    GooeyShape? other(int i) => i < n ? others[i] : null;
+    double width(int i) => i < n ? blendWidths[i] : 0;
+
     final origin = shape.rect.topLeft;
     final w = _UniformWriter(shader);
     w.vec4(1, 1, 0, 0);
-    w.vec4(other == null ? 0 : blendWidth, origin.dx, origin.dy, pixelRatio);
+    w.vec4(0, origin.dx, origin.dy, pixelRatio);
     w.vec4(0, 0, 0, 1);
     w.color(shape.color);
-    w.color(other?.color ?? shape.color);
+    for (var i = 0; i < maxNeighbours; i++) {
+      w.color(other(i)?.color ?? shape.color);
+    }
+    w.vec4(width(0), width(1), width(2), 0);
     _shape(w, shape, 0);
-    _shape(w, other, 1);
+    for (var i = 0; i < maxNeighbours; i++) {
+      _shape(w, other(i), i + 1);
+    }
     final area = shape.rect.inflate(shape.maxBulge + 2).shift(-origin);
     canvas.drawRect(area, Paint()..shader = shader);
   }

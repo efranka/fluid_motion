@@ -116,5 +116,75 @@ void main() {
       ], meetAt: 8);
       expect(touching.mixing, isTrue);
     });
+
+    // A red, B grey and C blue in a row, touching: B lies between two others.
+    List<GooeyShape> chain() => [
+          GooeyShape(
+              const Rect.fromLTWH(0, 0, 100, 64), const Color(0xFFFF0000),
+              radius: 8),
+          GooeyShape(
+              const Rect.fromLTWH(100, 0, 60, 64), const Color(0xFF808080),
+              radius: 8),
+          GooeyShape(
+              const Rect.fromLTWH(160, 0, 100, 64), const Color(0xFF0000FF),
+              radius: 8),
+        ];
+
+    int maxChannelJump(int a, int b) {
+      var most = 0;
+      for (final shift in [16, 8, 0]) {
+        final d = (((a >> shift) & 0xFF) - ((b >> shift) & 0xFF)).abs();
+        if (d > most) most = d;
+      }
+      return most;
+    }
+
+    test('a shape between two others blends towards both, without an edge', () {
+      final field =
+          GooeyColorField(chain(), meetAt: 8, maxWidth: 120, neighbours: 3);
+      // The middle of B, where A and C are equally far away.
+      final left = field.argbAt(129.9, 32), right = field.argbAt(130.1, 32);
+      expect(maxChannelJump(left, right), lessThanOrEqualTo(2));
+      // … and A's red and C's blue pull equally (green has none of either,
+      // so it drops below the grey's own).
+      final mid = field.argbAt(130, 32);
+      expect((((mid >> 16) & 0xFF) - (mid & 0xFF)).abs(), lessThanOrEqualTo(1));
+      expect((mid >> 8) & 0xFF, lessThan(100));
+    });
+
+    test('with one neighbour the colour jumps where the nearest changes', () {
+      final field =
+          GooeyColorField(chain(), meetAt: 8, maxWidth: 120, neighbours: 1);
+      final left = field.argbAt(129.9, 32), right = field.argbAt(130.1, 32);
+      expect(maxChannelJump(left, right), greaterThan(10));
+    });
+
+    test('one neighbour blends exactly like the two nearest', () {
+      final two = [chain()[0], chain()[1]];
+      final one = GooeyColorField(two, meetAt: 8, neighbours: 1);
+      final three = GooeyColorField(two, meetAt: 8, neighbours: 3);
+      for (var x = 60.0; x < 160; x += 7) {
+        expect(maxChannelJump(one.argbAt(x, 32), three.argbAt(x, 32)),
+            lessThanOrEqualTo(1));
+      }
+    });
+
+    test('neighboursOf lists connected shapes, most connected first', () {
+      final field = GooeyColorField(chain(), meetAt: 8);
+      expect(field.neighboursOf(1, 3).toSet(), {0, 2});
+      expect(field.neighboursOf(1, 1), hasLength(1));
+      expect(field.neighboursOf(1, 0), isEmpty);
+      expect(field.neighboursOf(0, 3), [1]); // A does not touch C
+    });
+  });
+
+  group('GooeyStyle', () {
+    test('blendNeighbours defaults to every slot and survives copyWith', () {
+      const style = GooeyStyle();
+      expect(style.blendNeighbours, GooeyShader.maxNeighbours);
+      expect(style.copyWith(blendNeighbours: 1).blendNeighbours, 1);
+      expect(style.copyWith(neck: false).blendNeighbours,
+          GooeyShader.maxNeighbours);
+    });
   });
 }

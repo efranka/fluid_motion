@@ -1,3 +1,14 @@
+## Unreleased
+
+- Colour blending with several touching shapes: a shape between two others
+  now blends towards both, with no hard edge where one takes over. Up to
+  `GooeyShader.maxNeighbours` (3) neighbours at once, set with
+  `GooeyStyle.blendNeighbours`. `MotionQuality` drops it to one neighbour
+  first (`MotionFeature.multiBlend`).
+- `GooeyShader.paintSurface` takes `others` and `blendWidths` lists instead
+  of `other` and `blendWidth`.
+- Contact between shapes with holes (a ring) is measured robustly.
+
 ## 0.1.0
 
 First release.
