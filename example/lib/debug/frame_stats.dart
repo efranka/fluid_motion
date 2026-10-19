@@ -7,7 +7,9 @@ import 'package:flutter/scheduler.dart';
 ///
 /// Two kinds of numbers:
 ///  • fps and jank: the time between frames (what the eye sees). Affected by
-///    how you scroll, so the numbers vary.
+///    how you scroll, so the numbers vary. Only counted while something
+///    animates: the pause before a frame that follows an idle moment is not
+///    a stutter, just nothing to draw.
 ///  • build and raster: how many ms each frame actually costs to build
 ///    (Dart: layout and painting) and to rasterise (renderer). Independent of
 ///    scrolling style, so these are the ones to compare. At 60 Hz build +
@@ -24,6 +26,10 @@ class FrameStats extends ChangeNotifier {
 
   bool _active = true;
   Duration? _last;
+
+  /// Whether the previous frame asked for the next one (something animates).
+  /// Only then is the time between the two a stutter if it is long.
+  bool _continuous = false;
   Timer? _notify;
 
   // Time between frames.
@@ -31,6 +37,14 @@ class FrameStats extends ChangeNotifier {
   int slow = 0;
   double worst = 0;
   double _sum = 0;
+
+  /// The single most expensive frame (build + raster, ms) – catches a
+  /// one-off hitch, e.g. the first time something is drawn.
+  double heaviest = 0;
+
+  /// How [heaviest] splits: build (Dart – e.g. code running for the first
+  /// time) and raster (renderer – e.g. a GPU program being prepared).
+  double heaviestBuild = 0, heaviestRaster = 0;
 
   // Work per frame (ms).
   final List<double> _build = [];
@@ -69,10 +83,15 @@ class FrameStats extends ChangeNotifier {
   void _onFrame(Duration timeStamp) {
     if (!_active) return;
     final last = _last;
+    final continuous = _continuous;
     _last = timeStamp;
-    if (last == null) return;
+    _continuous = false;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _continuous = SchedulerBinding.instance.hasScheduledFrame;
+    });
+    if (last == null || !continuous) return;
     final ms = (timeStamp - last).inMicroseconds / 1000;
-    if (ms <= 0 || ms > 100) return;
+    if (ms <= 0 || ms > 1000) return;
     frames++;
     _sum += ms;
     if (ms > 20) slow++;
@@ -83,8 +102,15 @@ class FrameStats extends ChangeNotifier {
   void _onTimings(List<FrameTiming> timings) {
     if (!_active) return;
     for (final t in timings) {
-      _build.add(t.buildDuration.inMicroseconds / 1000);
-      _raster.add(t.rasterDuration.inMicroseconds / 1000);
+      final build = t.buildDuration.inMicroseconds / 1000;
+      final raster = t.rasterDuration.inMicroseconds / 1000;
+      _build.add(build);
+      _raster.add(raster);
+      if (build + raster > heaviest) {
+        heaviest = build + raster;
+        heaviestBuild = build;
+        heaviestRaster = raster;
+      }
     }
     if (_build.length > _keep) {
       _build.removeRange(0, _build.length - _keep);
@@ -105,8 +131,12 @@ class FrameStats extends ChangeNotifier {
     frames = 0;
     slow = 0;
     worst = 0;
+    heaviest = 0;
+    heaviestBuild = 0;
+    heaviestRaster = 0;
     _sum = 0;
     _last = null;
+    _continuous = false;
     _build.clear();
     _raster.clear();
     notifyListeners();

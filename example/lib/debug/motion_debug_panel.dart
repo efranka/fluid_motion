@@ -66,7 +66,10 @@ class _MotionDebugPanelState extends State<MotionDebugPanel> {
             Text(
               '${s.fps.toStringAsFixed(0)} fps · '
               '${(s.slowShare * 100).toStringAsFixed(0)} % jank · '
-              'worst ${s.worst.toStringAsFixed(0)} ms',
+              'worst gap ${s.worst.toStringAsFixed(0)} ms · '
+              'heaviest frame ${s.heaviest.toStringAsFixed(0)} ms '
+              '(build ${s.heaviestBuild.toStringAsFixed(0)} + '
+              'raster ${s.heaviestRaster.toStringAsFixed(0)})',
               style: theme.textTheme.labelSmall,
             ),
           ],
