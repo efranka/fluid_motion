@@ -216,55 +216,59 @@ class _ShapesScreenState extends State<ShapesScreen>
 
     return Scaffold(
       appBar: AppBar(title: const Text('Shapes')),
-      body: LayoutBuilder(
-        builder: (context, box) {
-          _layout(box.biggest);
-          return GooeyStage(
-            scene: _scene,
-            children: [
-              Positioned(
-                left: 16,
-                right: 16,
-                top: 8,
-                child: Text(
-                  'Drag a shape towards another – and throw it.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              GooeyBackdrop(scene: _scene),
-              // Backgrounds first, then content – so content in one shape
-              // can be seen dissolving into another.
-              for (final (i, item) in _items.indexed)
-                placed(item, GooeySurface(scene: _scene, index: i)),
-              for (final (i, item) in _items.indexed)
-                placed(
-                  item,
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onPanStart: (_) => _dragStart(item),
-                    onPanUpdate: (d) => _dragUpdate(item, d),
-                    onPanEnd: (d) => _dragEnd(item, d.velocity),
-                    onPanCancel: () => _dragEnd(item, Velocity.zero),
-                    child: item.icon == null
-                        ? const SizedBox.expand()
-                        : Center(
-                            child: GooeyContent(
-                              scene: _scene,
-                              index: i,
-                              child: Icon(
-                                item.icon,
-                                color: iconColor,
-                                size:
-                                    math.min(item.size.shortestSide * 0.36, 32),
-                              ),
-                            ),
-                          ),
+      // Keeps the shapes clear of the home indicator and rounded corners.
+      body: SafeArea(
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, box) {
+            _layout(box.biggest);
+            return GooeyStage(
+              scene: _scene,
+              children: [
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  top: 8,
+                  child: Text(
+                    'Drag a shape towards another – and throw it.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
                   ),
                 ),
-            ],
-          );
-        },
+                GooeyBackdrop(scene: _scene),
+                // Backgrounds first, then content – so content in one shape
+                // can be seen dissolving into another.
+                for (final (i, item) in _items.indexed)
+                  placed(item, GooeySurface(scene: _scene, index: i)),
+                for (final (i, item) in _items.indexed)
+                  placed(
+                    item,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onPanStart: (_) => _dragStart(item),
+                      onPanUpdate: (d) => _dragUpdate(item, d),
+                      onPanEnd: (d) => _dragEnd(item, d.velocity),
+                      onPanCancel: () => _dragEnd(item, Velocity.zero),
+                      child: item.icon == null
+                          ? const SizedBox.expand()
+                          : Center(
+                              child: GooeyContent(
+                                scene: _scene,
+                                index: i,
+                                child: Icon(
+                                  item.icon,
+                                  color: iconColor,
+                                  size: math.min(
+                                      item.size.shortestSide * 0.36, 32),
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

@@ -36,6 +36,17 @@ void main() {
     });
   });
 
+  test('impossible spring values fail clearly during development', () {
+    expect(() => EnergySpring(stiffness: 0), throwsAssertionError);
+    expect(() => EnergySpring(stiffness: 100, mass: -1), throwsAssertionError);
+    expect(
+      () => EnergySpring(stiffness: 100, calmSpeed: 500, wildSpeed: 500),
+      throwsAssertionError,
+    );
+    expect(
+        () => EnergySpring(stiffness: 100, wildRatio: 0), throwsAssertionError);
+  });
+
   group('rubberBand', () {
     test('is 0 without overshoot and approaches the dimension', () {
       expect(rubberBand(0, 10), 0);

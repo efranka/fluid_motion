@@ -65,15 +65,25 @@ class MotionQuality extends ChangeNotifier {
   MotionQuality({
     bool enabled = true,
     this.dropOrder = defaultDropOrder,
-    this.budgetMs = 16,
-    this.overBudgetShare = 0.25,
-    this.upgradeHeadroom = 0.5,
+    double budgetMs = 16,
+    double overBudgetShare = 0.25,
+    double upgradeHeadroom = 0.5,
     this.downgradeAfter = const Duration(milliseconds: 1500),
     this.upgradeAfter = const Duration(seconds: 6),
     this.idleDelay = const Duration(milliseconds: 300),
     this.respectLowPower = true,
     bool measure = true,
-  })  : _enabled = enabled,
+  })  : assert(budgetMs > 0, 'budgetMs must be positive'),
+        assert(overBudgetShare > 0 && overBudgetShare < 1,
+            'overBudgetShare must be between 0 and 1'),
+        assert(upgradeHeadroom > 0 && upgradeHeadroom < 1,
+            'upgradeHeadroom must be between 0 and 1'),
+        assert(downgradeAfter > Duration.zero && upgradeAfter > Duration.zero,
+            'measuring windows must be longer than zero'),
+        _budgetMs = budgetMs,
+        _overBudgetShare = overBudgetShare,
+        _upgradeHeadroom = upgradeHeadroom,
+        _enabled = enabled,
         _measure = measure {
     if (measure) {
       SchedulerBinding.instance
@@ -95,15 +105,33 @@ class MotionQuality extends ChangeNotifier {
   final List<MotionFeature> dropOrder;
 
   /// How many ms a frame may take (build + raster). 16 ms = 60 Hz.
-  double budgetMs;
+  double get budgetMs => _budgetMs;
+  set budgetMs(double value) {
+    assert(value > 0, 'budgetMs must be positive');
+    _budgetMs = value;
+  }
+
+  double _budgetMs;
 
   /// Switch an effect off when more than this share of frames is over
-  /// budget.
-  double overBudgetShare;
+  /// budget (0..1).
+  double get overBudgetShare => _overBudgetShare;
+  set overBudgetShare(double value) {
+    assert(value > 0 && value < 1, 'overBudgetShare must be between 0 and 1');
+    _overBudgetShare = value;
+  }
+
+  double _overBudgetShare;
 
   /// Switch an effect back on when 9 out of 10 frames use less than this
   /// share of the budget (hysteresis, so quality does not flicker).
-  double upgradeHeadroom;
+  double get upgradeHeadroom => _upgradeHeadroom;
+  set upgradeHeadroom(double value) {
+    assert(value > 0 && value < 1, 'upgradeHeadroom must be between 0 and 1');
+    _upgradeHeadroom = value;
+  }
+
+  double _upgradeHeadroom;
 
   /// How long to measure (while moving) before switching something off …
   final Duration downgradeAfter;

@@ -18,7 +18,12 @@ class EnergySpring {
     this.wildSpeed = 2500,
     this.calmRatio = 1.0,
     this.wildRatio = 0.35,
-  });
+  })  : assert(stiffness > 0, 'stiffness must be positive'),
+        assert(mass > 0, 'mass must be positive'),
+        assert(calmSpeed >= 0, 'calmSpeed cannot be negative'),
+        assert(wildSpeed > calmSpeed, 'wildSpeed must be above calmSpeed'),
+        assert(
+            calmRatio > 0 && wildRatio > 0, 'damping ratios must be positive');
 
   final double stiffness, mass;
 

@@ -120,4 +120,17 @@ void main() {
     q.enabled = false;
     expect(scene.style.contentBlend, isTrue);
   });
+
+  test('impossible settings fail clearly during development', () {
+    expect(
+        () => MotionQuality(measure: false, budgetMs: 0), throwsAssertionError);
+    expect(
+      () => MotionQuality(measure: false, overBudgetShare: 1.5),
+      throwsAssertionError,
+    );
+    final q = _quality();
+    expect(() => q.budgetMs = -1, throwsAssertionError);
+    q.budgetMs = 3; // a valid change still works
+    expect(q.budgetMs, 3);
+  });
 }
