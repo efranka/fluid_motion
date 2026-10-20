@@ -1,3 +1,10 @@
+## Unreleased (branch `prototype/edge-light`)
+
+- Prototype: `GooeyStyle(light: GooeyLight(...))` – an edge with a
+  gradient, a fill gradient, inner glows (from the ends of an axis and along
+  the outline) and soft shadows, all along the merged outline, every measure
+  and colour a parameter (GPU only). See docs/STATUS.md.
+
 ## 0.3.0 – 2026-10-20
 
 - "Reduce motion" is respected by the components themselves.

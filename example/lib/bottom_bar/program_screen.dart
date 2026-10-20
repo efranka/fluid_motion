@@ -6,6 +6,7 @@ import 'package:fluid_motion/fluid_motion.dart';
 
 import '../debug/frame_stats.dart';
 import '../debug/motion_debug_panel.dart';
+import '../edge_light/recipes.dart';
 import 'bar_items.dart';
 import 'bottom_bar_motion.dart';
 
@@ -123,6 +124,10 @@ class _ProgramScreenState extends State<ProgramScreen>
   bool _freezeMorph = false;
   bool _collapseOnly = false;
   bool _hideContent = false;
+  // Prototype: edge light and shadow along the merged outline.
+  bool _edgeLight = false;
+  bool _shadow = false;
+  bool get _lit => _edgeLight || _shadow;
   MotionTokens _tokens = MotionTokens.standard;
   ColorScheme? _cs;
   final _stats = FrameStats();
@@ -189,7 +194,26 @@ class _ProgramScreenState extends State<ProgramScreen>
         contentBlend: _f.contentBlend,
         useShader: _useShader,
         neckStyle: const GooeyNeckStyle(reach: _gap),
+        light: !_lit ? null : _light,
       );
+
+  /// The prototype's light: the example's rim light recipe, with or without
+  /// its edge and its shadow.
+  GooeyLight get _light {
+    final cs = _cs!;
+    final rim = EdgeLightRecipe.rimLight
+        .forFill(cs.surfaceContainerHigh, shadow: cs.shadow);
+    if (!_edgeLight) return rim.shadowsOnly;
+    return _shadow ? rim : rim.copyWith(shadows: const []);
+  }
+
+  void _setLight({bool? edge, bool? shadow}) {
+    setState(() {
+      _edgeLight = edge ?? _edgeLight;
+      _shadow = shadow ?? _shadow;
+    });
+    _scene.style = _gooeyStyle;
+  }
 
   void _setShader(bool on) {
     setState(() => _useShader = on);
@@ -355,7 +379,7 @@ class _ProgramScreenState extends State<ProgramScreen>
     // The shape's background: a plain DecoratedBox, or a GooeySurface that
     // can blend colour and "blob".
     Widget surface(int index, Color color) {
-      if (!_f.colorBlend && !_f.blobImpact) {
+      if (!_f.colorBlend && !_f.blobImpact && !_lit) {
         return DecoratedBox(
           decoration: BoxDecoration(
             color: color,
@@ -637,13 +661,23 @@ class _ProgramScreenState extends State<ProgramScreen>
                       _hideContent,
                       (v) => setState(() => _hideContent = v),
                     ),
+                    (
+                      'Edge light along the merged shape (prototype)',
+                      _edgeLight,
+                      (v) => _setLight(edge: v),
+                    ),
+                    (
+                      'Shadow under the merged shape (prototype)',
+                      _shadow,
+                      (v) => _setLight(shadow: v),
+                    ),
                   ],
                 ),
               ),
 
               // The neck between the shapes. Lies UNDER both shapes.
               if (!_hideBar) ...[
-                if (_f.gooey) GooeyBackdrop(scene: _scene),
+                if (_f.gooey || _lit) GooeyBackdrop(scene: _scene),
 
                 // The layers, bottom up: backgrounds first, then content – so
                 // the lower shape's icons can be seen through the upper shape.

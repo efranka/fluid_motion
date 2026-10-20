@@ -6,6 +6,7 @@ import 'package:flutter/painting.dart';
 
 import 'field.dart';
 import 'geometry.dart';
+import 'light.dart';
 import 'neck.dart';
 import 'shape.dart';
 
@@ -34,12 +35,17 @@ abstract final class GooeyShader {
   static Listenable get updates => _updates;
   static final _updates = _Updates();
 
+  /// How many floats the last paint call wrote – for the test that keeps
+  /// `shader.dart` and `gooey.frag` in step.
+  @visibleForTesting
+  static int debugUniformsWritten = 0;
+
   /// Load the shader. If it fails, the error is logged and the CPU version
-  /// is used.
-  static Future<bool> load() async {
+  /// is used. [asset] is only for the package's own tests.
+  static Future<bool> load({@visibleForTesting String asset = assetKey}) async {
     if (isReady) return true;
     try {
-      _program ??= await ui.FragmentProgram.fromAsset(assetKey);
+      _program ??= await ui.FragmentProgram.fromAsset(asset);
       // Samplers must always be bound; unused ones get this 1×1 image.
       _empty ??= await _image(Uint8List.fromList([128, 128, 128, 255]), 1, 1);
       return true;
@@ -122,6 +128,7 @@ abstract final class GooeyShader {
     GooeyNeckGeometry g, {
     double blendWidth = 0,
     double pixelRatio = 1,
+    GooeyLight? light,
   }) {
     final w = _UniformWriter(shader);
     w.vec4(0, g.k, GooeyNeckGeometry.overlap, GooeyNeckGeometry.addsAtLeast);
@@ -137,6 +144,7 @@ abstract final class GooeyShader {
     _shape(w, b, 1);
     _shape(w, null, 2);
     _shape(w, null, 3);
+    _light(w, light, const [], pixelRatio);
     canvas.drawRect(g.region, Paint()..shader = shader);
   }
 
@@ -152,17 +160,23 @@ abstract final class GooeyShader {
   /// width in [blendWidths] (px). Empty [others] = the shape's own colour.
   ///
   /// At most [maxNeighbours] others are used – pass the most connected
-  /// first.
+  /// first. With [light], [necks] holds the neck towards each of [others]
+  /// (null = none), so the edge follows the merged outline; a blend width of
+  /// 0 then means "merged outline only, no colour blend".
   static void paintSurface(
     Canvas canvas,
     ui.FragmentShader shader,
     GooeyShape shape, {
     List<GooeyShape> others = const [],
     List<double> blendWidths = const [],
+    List<GooeyNeckGeometry?> necks = const [],
     double pixelRatio = 1,
+    GooeyLight? light,
   }) {
     assert(
         others.length == blendWidths.length, 'one blend width per other shape');
+    assert(necks.isEmpty || necks.length == others.length,
+        'one neck (or null) per other shape');
     final n = others.length < maxNeighbours ? others.length : maxNeighbours;
     GooeyShape? other(int i) => i < n ? others[i] : null;
     double width(int i) => i < n ? blendWidths[i] : 0;
@@ -181,8 +195,104 @@ abstract final class GooeyShader {
     for (var i = 0; i < maxNeighbours; i++) {
       _shape(w, other(i), i + 1);
     }
+    _light(w, light, [for (var i = 0; i < n && i < necks.length; i++) necks[i]],
+        pixelRatio);
     final area = shape.rect.inflate(shape.maxBulge + 2).shift(-origin);
     canvas.drawRect(area, Paint()..shader = shader);
+  }
+
+  /// Paint [shadow] under [shapes] (at most four, in scene coordinates) as
+  /// one merged outline: the first two merged with [neck], the others
+  /// added as they are.
+  static void paintShadow(
+    Canvas canvas,
+    ui.FragmentShader shader,
+    List<GooeyShape> shapes,
+    BoxShadow shadow, {
+    GooeyNeckGeometry? neck,
+  }) {
+    if (shapes.isEmpty) return;
+    final n = shapes.length < 4 ? shapes.length : 4;
+    final sigma = shadow.blurSigma;
+    final w = _UniformWriter(shader);
+    w.vec4(2, neck?.k ?? 0, 0, 0);
+    w.vec4(0, 0, 0, 1);
+    if (neck == null) {
+      w.vec4(0, 0, 0, 1);
+    } else {
+      w.vec4(neck.focus.dx, neck.focus.dy, neck.bumpAmplitude,
+          1 / (neck.bumpSigma * neck.bumpSigma));
+    }
+    for (var i = 0; i < 4; i++) {
+      w.color(shadow.color);
+    }
+    w.vec4(0, 0, 0, 0);
+    var bounds = shapes.first.rect.inflate(shapes.first.maxBulge);
+    for (var i = 0; i < 4; i++) {
+      final s = i < n ? shapes[i] : null;
+      _shape(w, s, i);
+      if (s != null) {
+        bounds = bounds.expandToInclude(s.rect.inflate(s.maxBulge));
+      }
+    }
+    // Edge light (unused here), then the shadow itself.
+    w.zeros(4 * 16);
+    w.color(shadow.color);
+    w.vec4(sigma, shadow.spreadRadius, shadow.offset.dx, shadow.offset.dy);
+    final area = bounds
+        .shift(shadow.offset)
+        .inflate(3 * sigma + shadow.spreadRadius.abs() + 1);
+    canvas.drawRect(area, Paint()..shader = shader);
+  }
+
+  /// Writes the edge-light uniforms (after the four shapes): the necks
+  /// towards B, C and D, their k, the edge, glow and fill colours. The
+  /// shadow uniforms are left empty (see [paintShadow]).
+  static void _light(
+    _UniformWriter w,
+    GooeyLight? light,
+    List<GooeyNeckGeometry?> necks,
+    double pixelRatio,
+  ) {
+    GooeyNeckGeometry? neck(int i) => i < necks.length ? necks[i] : null;
+    for (var i = 0; i < maxNeighbours; i++) {
+      final g = neck(i);
+      if (g == null) {
+        w.vec4(0, 0, 0, 1);
+      } else {
+        w.vec4(g.focus.dx, g.focus.dy, g.bumpAmplitude,
+            1 / (g.bumpSigma * g.bumpSigma));
+      }
+    }
+    w.vec4(neck(0)?.k ?? 0, neck(1)?.k ?? 0, neck(2)?.k ?? 0,
+        light?.edgeWidth ?? 0);
+    if (light == null) {
+      w.zeros(4 * 12);
+    } else {
+      // Up to four stops; fewer repeat the last one.
+      final colors = light.edgeColors, stops = light.edgeStops;
+      assert(
+          colors.isNotEmpty && colors.length <= 4, 'one to four edge colours');
+      assert(stops.length == colors.length, 'one stop per edge colour');
+      Color colorAt(int i) => colors[i < colors.length ? i : colors.length - 1];
+      double stopAt(int i) =>
+          i < stops.length ? stops[i] : (stops.isEmpty ? 0 : stops.last);
+      for (var i = 0; i < 4; i++) {
+        w.color(colorAt(i));
+      }
+      w.vec4(stopAt(0), stopAt(1), stopAt(2), stopAt(3));
+      w.vec4(light.begin.x, light.begin.y, light.end.x, light.end.y);
+      w.color(light.fillStart);
+      w.color(light.fillEnd);
+      w.color(light.glowStart);
+      w.color(light.glowEnd);
+      w.color(light.outlineGlow);
+      // Off when nothing would show, so a shadow-only light costs nothing
+      // on the surfaces.
+      w.vec4(light.glowDepth, light.showsOnSurface ? 1 : 0,
+          light.outlineGlowDepth, 0);
+    }
+    w.zeros(4 * 2);
   }
 
   /// Writes one shape's uniforms: rect, kind, three ripples, 24 vertices –
@@ -248,11 +358,16 @@ class _Updates extends ChangeNotifier {
 }
 
 class _UniformWriter {
-  _UniformWriter(this.shader);
+  _UniformWriter(this.shader) {
+    GooeyShader.debugUniformsWritten = 0;
+  }
   final ui.FragmentShader shader;
   int _i = 0;
 
-  void float(double v) => shader.setFloat(_i++, v);
+  void float(double v) {
+    shader.setFloat(_i++, v);
+    GooeyShader.debugUniformsWritten = _i;
+  }
 
   void vec4(double a, double b, double c, double d) {
     float(a);

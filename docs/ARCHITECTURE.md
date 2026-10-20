@@ -106,13 +106,32 @@ between frames.
 
 ## The GPU shader (`shaders/gooey.frag` + `gooey/shader.dart`)
 
-One program, two modes:
+One program, three modes:
 
 - `mode 0` – the neck between shape A and B.
 - `mode 1` – shape A's own surface, blended towards up to three neighbours
   (B, C, D) at once. `GooeyShader.maxNeighbours` (3) is the number of slots;
   `GooeyStyle.blendNeighbours` (0–3) chooses how many are used, and
   `MotionQuality` lowers it to 1 first (`MotionFeature.multiBlend`).
+- `mode 2` – a soft shadow under shapes A–D together (A and B merged with
+  their neck), offset and blurred like a `BoxShadow`: the fall-off of a
+  Gaussian blur across an edge, from the distance (logistic fit,
+  `1 / (1 + exp(1.702 · d / sigma))`). Drawn by `GooeyBackdrop` before the
+  necks.
+
+**Edge light** (`GooeyStyle.light`, prototype). Modes 0 and 1 lay a fill
+gradient, an inner glow and a thin edge over the colour. The edge is a band
+of the MERGED distance, not of the shape's own: the neck pass uses its own
+smooth-min `sm`; the surface pass recomputes the same smooth-min towards
+each neighbour it has a neck with (`uNeckB..D`, `uKs`), so both passes agree
+pixel for pixel and the edge runs on through the neck and vanishes where the
+shapes have merged. The outline glow is a band of the same distance. Where a
+pixel lies on the gradient axis – fraction from begin to end, px from each
+end, in the shape's own rect – is blended between shapes with the same
+weights as the colour, so gradients, axis glows and edge colour have no seam
+either. The
+fill painter therefore also passes shapes it only has a neck with (blend
+width 0 = merged outline only).
 
 **The uniform order is a contract.** Flutter sets uniforms by index, in
 declaration order. `_UniformWriter` in `shader.dart` must write exactly:
@@ -126,8 +145,19 @@ uWidths   (blend width to B, C, D, unused)        – surface mode
 shape A, B, C, D, each:
   rect (l, t, r, b) · shape (type, p1, p2, vertex count; type < 0 = none)
   · 3 ripples (cx, cy, amplitude, 1/r²) · 24 vec2 vertices
+uNeckB, uNeckC, uNeckD  (focus x, focus y, amplitude, 1/sigma²) – surface
+uKs       (k towards B, C, D; edge width px)
+uEdge0..3 (edge colours, rgba) · uEdgeStops (4 stops)
+uAxis     (gradient begin x, y, end x, y – Alignment units in each rect)
+uFillStart, uFillEnd, uGlowStart, uGlowEnd, uEdgeGlow   (rgba)
+uLight    (axis glow depth px, edge light on 0/1, outline glow depth px, unused)
+uShadow   (rgba) · uShadowParams (sigma, spread, offset x, offset y)
 samplers uFieldA..D (an empty 1×1 image when unused)
 ```
+
+`test/shader_uniforms_test.dart` loads the real shader and checks that every
+paint call writes exactly as many floats as `gooey.frag` declares (376
+today). It cannot check the order – that is still on you.
 
 For a field shape the "vertices" carry the texture mapping instead
 (scale/offset, padded rect, value scale, grid size). Adding a slot or a

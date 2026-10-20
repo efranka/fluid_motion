@@ -20,6 +20,144 @@ something here changes.
 | P1 | One shared frame-time measurer instead of one callback per `MotionQuality` | Persistent frame callbacks cannot be removed, only muted |
 | R1 | Test native Android on a real phone, GPU and CPU | Only iOS and web tested |
 | Docs | GIF or video at the top of the README | |
+| L1 | Edge light along the merged shape: measure on an iPhone 11 | Prototype on branch `prototype/edge-light`, see below |
+| L2 | Cheaper shadow | Only if L1 shows the shadow is too heavy |
+| L3 | `MotionQuality` drops the shadow first, then the edge light | |
+| L4 | Edge light on the CPU fallback | Today the CPU path draws the shapes without it |
+| L5 | `MotionWarmUp` draws the shadow mode and a lit surface | Same program, so probably not needed – check the Safari first fold |
+
+## Edge light along the merged shape (investigation, 2026-10-20)
+
+Erik 2026-10-20: *"Vil du hjælpe med at finde ud af om vi kan få pakken til
+at understøtte effekter som border og lyskanten"* – and the goal: it should
+*"komme til at ligne det som er i produktion i dag så godt som muligt"*, but
+as a general building block, usable *"til alle mulige ting forskellige
+steder"*, not hard-coded to one app.
+
+Asked by the events app: its bottom bar has a rim light (a 1 px edge
+lightest at the top and bottom, a faint inner glow there, a fill a little
+lighter at the top and a soft shadow), and gooey and that light cannot both
+paint the same surface. When the shapes flow together, the edge must follow
+the merged shape. Only its numbers are used here; nothing else from the app.
+
+Prototype on branch `prototype/edge-light` (GPU only, not released).
+Measured: likeness against plain Flutter (below). iPhone cost **not
+measured yet** (L1).
+
+![Along the merged shape, dark and light, at four gaps](images/edge_light.png)
+
+**1. Short answer**
+
+1. **Yes.** `GooeyLight` is a general building block in `GooeyStyle(light:)`:
+   an edge with a gradient, a fill gradient, an inner glow from both ends of
+   a gradient axis, an inner glow along the whole outline, and shadows. Every
+   measure and colour is a parameter; every part is optional; it works with
+   every outline. The default is a hairline edge.
+2. **The edge follows the merged shape**: it is a band of the merged
+   distance, so it runs on along the neck and vanishes where the shapes have
+   flowed together, with no seam between neck and shapes.
+3. **It looks like the plain Flutter version while the shapes are apart**:
+   mean difference 0.4 (dark) and 0.9 (light) of 255 per channel. The
+   example's "rim light" recipe uses the events app's numbers.
+4. **Cost, estimated**: edge, glow and gradient ≈ 1.4× today's gooey pixel
+   work; with a soft shadow ≈ 3×, two shadows 4–5×. Must be measured on an
+   iPhone 11 (L1).
+5. **Limits**: GPU only; the edge lies under the shape's content; one
+   shadow pass merges at most four shapes.
+
+**2. The building block**
+
+```dart
+GooeyStyle(
+  light: GooeyLight(
+    edgeWidth: 1,                         // 0 = no edge
+    edgeColors: [...], edgeStops: [...],  // 1–4 stops along the axis
+    begin: Alignment.topCenter,           // the gradient axis, in each
+    end: Alignment.bottomCenter,          // shape's own rect
+    fillStart: ..., fillEnd: ...,         // laid over the fill at each end
+    glowStart: ..., glowEnd: ..., glowDepth: 12,  // inner glow from the ends
+    outlineGlow: ..., outlineGlowDepth: 8,        // inner glow along the outline
+    shadows: [BoxShadow(...)],            // under the merged shape
+  ),
+)
+```
+
+All colours are laid over each shape's own (blended) colour, so one light
+fits every shape in a scene. `copyWith` and `shadowsOnly` derive variants.
+The example's `EdgeLightRecipe` shows four looks from the same block: rim
+light, hairline, strong glow, shadow only – each picked from how light the
+fill is.
+
+**3. Likeness to plain Flutter** (the example's Edge light demo:
+`FlatLight` draws the same `GooeyLight` one shape at a time with a decorated
+box, a glow painter and a stroked edge; the rim-light recipe; bar 240 × 64
+and button 64; `surfaceContainer` and `primaryContainer`; 2× pixels).
+
+| Apart (gap 24) | Mean difference (0–255) | Largest | Pixels off by more than 8 |
+|---|---|---|---|
+| Dark | 0.43 | 34 | 0.09 % |
+| Light | 0.94 | 20 | 1.73 % |
+
+The differences are in the shadow's halo and the edge's anti-aliasing. The
+shadow comes from the distance (a logistic fit to a Gaussian), so it is a
+touch darker at the round ends than Flutter's blur. `example/test/
+edge_light_match_test.dart` measures this (in the test renderer, whose blur
+is harder than CanvasKit's; checked by eye in Chrome as well).
+
+**4. What changes when the shapes flow together**
+
+| | Plain Flutter (each shape) | Along the merged shape |
+|---|---|---|
+| Edge where they meet | Two edges cross each other | The edge runs along the neck's outline; where they overlap there is no edge |
+| Edge colour in the neck | – | Blended between the shapes. The neck's waist lies lower than the shapes' tops, so the edge there is about as faint as on the sides (stop 0.3) |
+| Glow from the ends | Stops at each shape | Continuous; in a narrow neck it starts below the shapes' tops, so it looks thinner there |
+| Fill gradient | Each shape its own | Blended, no seam |
+| Shadow | Two shadows add up, darker under the overlap | One shadow under the merged shape |
+| Just before touching | Nothing | The bumps reach out, and the edge follows them |
+| Fully merged | A seam where one shape lies on the other | One shape; along the top and bottom of the seam the neck's fillet makes the outline bulge a little, and the edge follows |
+
+![Light mode, a narrow neck (Chrome)](images/edge_light_web_light_gap4.png)
+![Light mode, merged (Chrome)](images/edge_light_web_light_merged.png)
+![Dark mode, strong glow recipe, touching (Chrome)](images/edge_light_web_dark_strong_glow.png)
+
+**5. Cost**
+
+The panel's numbers in Chrome on the Mac are noise for this (raster 37 ms
+with everything off in one run, 1.9 ms with everything on in the next), and
+on the web the GPU's time does not show in "raster" anyway. So this is an
+estimate from the work per pixel and the pixel areas on an iPhone 11
+(2 device pixels per point, the bottom bar demo's bar 358 × 56 pt):
+
+| | Pixels | Work per pixel | vs today's gooey |
+|---|---|---|---|
+| Surfaces today | ≈ 80 000 | 1 distance + ripples, neighbour near contact | 1× |
+| + edge, glows, gradient | same | + 5 blends, 1 smooth-min per neighbour | ≈ 1.4× |
+| + one soft shadow (blur 18) | + ≈ 211 000 | 2 distances, 1 exp | ≈ 3× |
+| + two shadows | + ≈ 311 000 | as above, twice | ≈ 4–5× |
+
+The shader is about 45 % larger (SkSL 31 kB against 21 kB). Same program,
+compiled once at the warm-up, but it may lengthen the Safari first-fold
+hitch (Known issues). If the shadow is too heavy (L2): Flutter's own
+`BoxShadow` per shape while apart, the shader's shadow only while connected,
+and several shadows in one pass.
+
+**6. To measure (L1)** – on the branch, iPhone 11 charged and cool, the
+Bottom bar demo, panel: Automatic quality off, Reset, fold and unfold five
+times, note `build + raster`, `90 %` and `heaviest frame`. Three runs: both
+prototype toggles off; "Edge light" on; both on. Safari (web) and native.
+
+**7. For Erik**
+
+1. Gooey **and** rim light on the same bar is now possible. Look at the
+   Edge light demo (slide the gap) before deciding.
+2. One light for the whole scene (now), or per shape later
+   (`GooeyMember(light:)`, more uniforms)?
+3. The shadow: exactly under the merged shape (costs the most), or Flutter's
+   own per shape (cheap; darker where they overlap)? *Recommendation:
+   decide after the iPhone measurement.*
+
+**8. Related:** the events app's `FLUID_MOTION.md` §6 and §8.4 and its
+`DESIGN.md` §5.1 (where the rim light's numbers come from).
 
 ## Known issues
 

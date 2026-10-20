@@ -44,6 +44,7 @@ export 'src/gooey/field.dart';
 export 'src/gooey/fill.dart';
 export 'src/gooey/geometry.dart';
 export 'src/gooey/influence.dart';
+export 'src/gooey/light.dart';
 export 'src/gooey/neck.dart';
 export 'src/gooey/painter.dart';
 export 'src/gooey/scene.dart';

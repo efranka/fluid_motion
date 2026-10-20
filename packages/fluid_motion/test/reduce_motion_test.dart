@@ -89,7 +89,11 @@ void main() {
     testWidgets('switches every effect off with "Reduce motion", and back',
         (tester) async {
       final motion = ValueNotifier(0.0);
-      final scene = GooeyScene(vsync: const TestVSync(), motion: motion);
+      final scene = GooeyScene(
+        vsync: const TestVSync(),
+        motion: motion,
+        style: const GooeyStyle(light: GooeyLight()),
+      );
       addTearDown(() {
         scene.dispose();
         motion.dispose();
@@ -111,6 +115,8 @@ void main() {
       expect(scene.style.contentBlend, isFalse);
       // What the app asked for is kept.
       expect(scene.baseStyle.neck, isTrue);
+      // Edge light is not motion: it stays.
+      expect(scene.style.light, isNotNull);
 
       await tester.pumpWidget(stage(false));
       expect(scene.reduceMotion, isFalse);

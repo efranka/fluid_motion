@@ -5,6 +5,14 @@
 //  mode 1: shape A's own surface – including blobs (ripples) – with its
 //          colour blending into up to three connected neighbours (B, C, D)
 //          near their contacts, all at once.
+//  mode 2: the soft shadow under shapes A–D together (A and B merged with
+//          the neck), offset and blurred like a BoxShadow.
+//
+// Edge light (modes 0 and 1, when uLight.y is 1): a fill gradient, an inner
+// glow from the start and end of a gradient axis, an inner glow all along the
+// outline, and a thin edge with a gradient – all following the MERGED
+// outline, so the edge runs along the neck and vanishes where the shapes
+// have flowed together.
 //
 // The maths is the same as the CPU version (GooeyNeckCpu, GooeyColorField),
 // computed per pixel. Coordinates: p = FlutterFragCoord() + origin, in scene
@@ -46,6 +54,26 @@ uniform vec4 uRectD;
 uniform vec4 uShapeD;
 uniform vec4 uRipD[3];
 uniform vec2 uVertD[24];
+
+// Edge light and shadow.
+uniform vec4 uNeckB;     // surface: the neck towards B – focus x, y, amplitude, 1/sigma²
+uniform vec4 uNeckC;
+uniform vec4 uNeckD;
+uniform vec4 uKs;        // surface: smooth-min k towards B, C, D (0 = no neck); edge width (px)
+uniform vec4 uEdge0;     // edge colours (straight rgba) at uEdgeStops, top → bottom of a shape
+uniform vec4 uEdge1;
+uniform vec4 uEdge2;
+uniform vec4 uEdge3;
+uniform vec4 uEdgeStops;
+uniform vec4 uAxis;      // gradient axis in each shape's rect: begin x, y, end x, y (-1..1, like Alignment)
+uniform vec4 uFillStart; // over the fill at the axis' start / end, fading to nothing at the other end
+uniform vec4 uFillEnd;
+uniform vec4 uGlowStart; // inner glow from the axis' start / end (rgba)
+uniform vec4 uGlowEnd;
+uniform vec4 uEdgeGlow;  // inner glow all along the merged outline (rgba)
+uniform vec4 uLight;     // axis glow depth (px), edge light on (0/1), outline glow depth (px), unused
+uniform vec4 uShadow;    // shadow colour (rgba)
+uniform vec4 uShadowParams; // sigma, spread, offset x, offset y
 
 uniform sampler2D uFieldA;
 uniform sampler2D uFieldB;
@@ -166,10 +194,6 @@ float towards(float da, float db, float w) {
   return u * u * (3.0 - 2.0 * u);
 }
 
-vec4 blend(float da, float db, float w) {
-  return mix(uColA, uColB, towards(da, db, w));
-}
-
 // A neighbour's weight relative to shape A (whose weight is 1). With one
 // neighbour this is exactly mix(A, B, u); with more, each neighbour pulls
 // the colour towards itself near its own contact, and the pulls add up
@@ -189,11 +213,106 @@ float weight(float da, float dk, float w) {
        (max(RIP[0].z, 0.0) + max(RIP[1].z, 0.0) + max(RIP[2].z, 0.0)) >=     \
    DA + W)
 
+// Where a point lies along the gradient axis in a shape's rect: (fraction
+// from start to end, px from the start, px from the end). Blended between
+// shapes like colour.
+vec3 place(vec2 p, vec4 r) {
+  vec2 c = (r.xy + r.zw) * 0.5;
+  vec2 h = (r.zw - r.xy) * 0.5;
+  vec2 a = c + uAxis.xy * h;
+  vec2 b = c + uAxis.zw * h;
+  vec2 ab = b - a;
+  float len = max(length(ab), 1e-3);
+  float along = dot(p - a, ab) / len;
+  return vec3(clamp(along / len, 0.0, 1.0), along, len - along);
+}
+
+// Straight-alpha "source over".
+vec4 over(vec4 top, vec4 base) {
+  float a = top.a + base.a * (1.0 - top.a);
+  if (a <= 0.0) return vec4(0.0);
+  return vec4((top.rgb * top.a + base.rgb * base.a * (1.0 - top.a)) / a, a);
+}
+
+float span(float t, float a, float b) {
+  return clamp((t - a) / max(b - a, 1e-4), 0.0, 1.0);
+}
+
+vec4 edgeColour(float t) {
+  if (t <= uEdgeStops.y) return mix(uEdge0, uEdge1, span(t, uEdgeStops.x, uEdgeStops.y));
+  if (t <= uEdgeStops.z) return mix(uEdge1, uEdge2, span(t, uEdgeStops.y, uEdgeStops.z));
+  return mix(uEdge2, uEdge3, span(t, uEdgeStops.z, uEdgeStops.w));
+}
+
+// The edge light on top of [base]: [at] is the blended place, [u] the
+// distance to the merged outline.
+vec4 lit(vec4 base, vec3 at, float u, float pr) {
+  vec4 c = over(vec4(uFillStart.rgb, uFillStart.a * (1.0 - at.x)), base);
+  c = over(vec4(uFillEnd.rgb, uFillEnd.a * at.x), c);
+  // At most half the way in from each end.
+  float depth = max(min(uLight.x, (at.y + at.z) * 0.5), 1e-3);
+  c = over(vec4(uGlowStart.rgb, uGlowStart.a * clamp(1.0 - at.y / depth, 0.0, 1.0)), c);
+  c = over(vec4(uGlowEnd.rgb, uGlowEnd.a * clamp(1.0 - at.z / depth, 0.0, 1.0)), c);
+  if (uEdgeGlow.a > 0.0) {
+    float d = max(uLight.z, 1e-3);
+    c = over(vec4(uEdgeGlow.rgb, uEdgeGlow.a * clamp(1.0 + u / d, 0.0, 1.0)), c);
+  }
+  float width = uKs.w;
+  if (width > 0.0) {
+    float band = clamp(0.5 - u * pr, 0.0, 1.0) -
+                 clamp(0.5 - (u + width) * pr, 0.0, 1.0);
+    vec4 e = edgeColour(at.x);
+    c = over(vec4(e.rgb, e.a * band), c);
+  }
+  return c;
+}
+
+// The merged distance of A and one neighbour (the same maths as the neck).
+float merged(vec2 p, float da, float db, vec4 neck, float k) {
+  vec2 f = p - neck.xy;
+  float bump = neck.z * exp(-dot(f, f) * neck.w);
+  return k > 0.0 ? smin(da - bump, db - bump, k) : min(da, db);
+}
+
+// One neighbour of the surface: colour weight and merged outline.
+#define NEIGHBOUR(SHAPE, RECT, RIP, SD, COL, WIDTH, K, NECK)                \
+  if (SHAPE.x > -0.5) {                                                     \
+    float reach = max(WIDTH, light ? K + NECK.z + uKs.w + 2.0 : 0.0);       \
+    if (reach > 0.0 && !FAR(RECT, RIP, da, reach)) {                        \
+      float db = SD(p);                                                     \
+      if (WIDTH > 0.0) {                                                    \
+        float k = weight(da, db, WIDTH);                                    \
+        sum += COL * k;                                                     \
+        at += place(p, RECT) * k;                                           \
+        total += k;                                                         \
+      }                                                                     \
+      if (light) u = min(u, merged(p, da, db, NECK, K));                    \
+    } else if (light && NECK.z > 0.0) {                                     \
+      u = min(u, merged(p, da, 1e9, NECK, K));                              \
+    }                                                                       \
+  }
+
 void main() {
   vec2 p = FlutterFragCoord().xy + uParams2.yz;
   float pr = max(uParams2.w, 1.0);
   float w = uParams2.x;
   float da = sdA(p);
+
+  bool light = uLight.y > 0.5;
+
+  if (uParams.x > 1.5) {
+    // The shadow: shapes A–D together, offset and blurred. The fall-off of a
+    // Gaussian blur across an edge, from the distance (logistic fit).
+    vec2 q = p - uShadowParams.zw;
+    float d = sdA(q);
+    if (uShapeB.x > -0.5) d = merged(q, d, sdB(q), uBump, uParams.y);
+    if (uShapeC.x > -0.5) d = min(d, sdC(q));
+    if (uShapeD.x > -0.5) d = min(d, sdD(q));
+    float s = max(uShadowParams.x, 1e-3);
+    float a = uShadow.a / (1.0 + exp(1.702 * (d - uShadowParams.y) / s));
+    fragColor = vec4(uShadow.rgb * a, a);
+    return;
+  }
 
   vec4 color;
   float v;
@@ -206,28 +325,21 @@ void main() {
     float sm = smin(da - bump, db - bump, uParams.y);
     float plain = min(da, db);
     v = max(max(sm, -(plain + uParams.z)), sm - plain + uParams.w);
-    color = blend(da, db, w > 0.0 ? w : 8.0);
+    float t = towards(da, db, w > 0.0 ? w : 8.0);
+    color = mix(uColA, uColB, t);
+    if (light) color = lit(color, mix(place(p, uRectA), place(p, uRectB), t), sm, pr);
   } else {
     // The surface of shape A, blended towards each connected neighbour.
     v = da;
     vec4 sum = uColA;
+    vec3 at = place(p, uRectA);
     float total = 1.0;
-    if (uShapeB.x > -0.5 && uWidths.x > 0.0 && !FAR(uRectB, uRipB, da, uWidths.x)) {
-      float k = weight(da, sdB(p), uWidths.x);
-      sum += uColB * k;
-      total += k;
-    }
-    if (uShapeC.x > -0.5 && uWidths.y > 0.0 && !FAR(uRectC, uRipC, da, uWidths.y)) {
-      float k = weight(da, sdC(p), uWidths.y);
-      sum += uColC * k;
-      total += k;
-    }
-    if (uShapeD.x > -0.5 && uWidths.z > 0.0 && !FAR(uRectD, uRipD, da, uWidths.z)) {
-      float k = weight(da, sdD(p), uWidths.z);
-      sum += uColD * k;
-      total += k;
-    }
+    float u = da;
+    NEIGHBOUR(uShapeB, uRectB, uRipB, sdB, uColB, uWidths.x, uKs.x, uNeckB)
+    NEIGHBOUR(uShapeC, uRectC, uRipC, sdC, uColC, uWidths.y, uKs.y, uNeckC)
+    NEIGHBOUR(uShapeD, uRectD, uRipD, sdD, uColD, uWidths.z, uKs.z, uNeckD)
     color = sum / total;
+    if (light) color = lit(color, at / total, u, pr);
   }
 
   // Anti-aliasing over about one device pixel.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fluid_motion/fluid_motion.dart';
 
 import 'bottom_bar/program_screen.dart';
+import 'edge_light/edge_light_screen.dart';
 import 'shapes/shapes_screen.dart';
 
 Future<void> main() async {
@@ -76,6 +77,13 @@ class DemoHome extends StatelessWidget {
                 'them back home.',
             Icons.category_outlined,
             const ShapesScreen(),
+          ),
+          entry(
+            'Edge light',
+            'An edge, glow and shadow along the merged shape, next to the '
+                'same light drawn one shape at a time.',
+            Icons.light_mode_outlined,
+            const EdgeLightScreen(),
           ),
         ],
       ),

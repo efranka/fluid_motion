@@ -179,6 +179,14 @@ void main() {
   });
 
   group('GooeyStyle', () {
+    test('light survives copyWith and compares by value', () {
+      const light = GooeyLight(edgeWidth: 2);
+      final style = const GooeyStyle(light: light).copyWith(neck: false);
+      expect(style.light, light);
+      expect(style.light, const GooeyLight(edgeWidth: 2));
+      expect(style.light, isNot(const GooeyLight()));
+    });
+
     test('blendNeighbours defaults to every slot and survives copyWith', () {
       const style = GooeyStyle();
       expect(style.blendNeighbours, GooeyShader.maxNeighbours);

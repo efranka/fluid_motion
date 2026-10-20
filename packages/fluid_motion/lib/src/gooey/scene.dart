@@ -10,6 +10,7 @@ import '../quality/motion_quality.dart';
 import 'contact.dart';
 import 'field.dart';
 import 'geometry.dart';
+import 'light.dart';
 import 'neck.dart';
 import 'shader.dart';
 import 'shape.dart';
@@ -36,6 +37,7 @@ class GooeyStyle {
     this.contentDepth = 22,
     this.maxBlobsPerShape = 3,
     this.blendNeighbours = GooeyShader.maxNeighbours,
+    this.light,
   }) : assert(
           blendNeighbours >= 0 && blendNeighbours <= GooeyShader.maxNeighbours,
           'blendNeighbours must be between 0 and GooeyShader.maxNeighbours',
@@ -99,6 +101,10 @@ class GooeyStyle {
   /// blending off entirely ([MotionFeature.multiBlend]).
   final int blendNeighbours;
 
+  /// Edge light along the merged outline (edge, glow, shadow), or null for
+  /// none. Not motion, so "Reduce motion" keeps it.
+  final GooeyLight? light;
+
   double get meetAt => neckStyle.meetAt;
 
   // Loose springs, so the blob wobbles a couple of times.
@@ -116,6 +122,7 @@ class GooeyStyle {
     GooeyNeckStyle? neckStyle,
     double? blendWidth,
     int? blendNeighbours,
+    GooeyLight? light,
   }) =>
       GooeyStyle(
         neck: neck ?? this.neck,
@@ -135,6 +142,7 @@ class GooeyStyle {
         contentDepth: contentDepth,
         maxBlobsPerShape: maxBlobsPerShape,
         blendNeighbours: blendNeighbours ?? this.blendNeighbours,
+        light: light ?? this.light,
       );
 }
 

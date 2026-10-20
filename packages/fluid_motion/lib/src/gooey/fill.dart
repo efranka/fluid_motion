@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 
+import 'neck.dart';
 import 'scene.dart';
 import 'shader.dart';
 import 'shape.dart';
@@ -64,15 +65,34 @@ class GooeyFillPainter extends CustomPainter {
     if (scene.style.useShader && GooeyShader.canDraw(s)) {
       // The shapes this one is most connected to – it blends towards all of
       // them at once.
-      final near = blends ? f.neighboursOf(index, neighbours) : const <int>[];
+      final near = blends ? f.neighboursOf(index, neighbours) : <int>[];
+      final light = scene.style.light;
+      final colour = near.length;
+      if (light != null) {
+        // The edge follows the merged outline: add the shapes this one has a
+        // neck with, or touches, after the colour neighbours.
+        for (var j = 0; j < shapes.length; j++) {
+          if (near.length >= GooeyShader.maxNeighbours) break;
+          if (j == index || near.contains(j)) continue;
+          final touching = s.rect
+              .inflate(s.maxBulge + light.edgeWidth + 2)
+              .overlaps(shapes[j].rect.inflate(shapes[j].maxBulge));
+          if (touching || _neck(j) != null) near.add(j);
+        }
+      }
       if (near.every((j) => GooeyShader.canDraw(shapes[j]))) {
         GooeyShader.paintSurface(
           canvas,
           _shader ??= GooeyShader.newShader(),
           s,
           others: [for (final j in near) shapes[j]],
-          blendWidths: [for (final j in near) f!.widthOf(index, j)],
+          blendWidths: [
+            for (final (k, j) in near.indexed)
+              k < colour ? f!.widthOf(index, j) : 0,
+          ],
+          necks: light == null ? const [] : [for (final j in near) _neck(j)],
           pixelRatio: pixelRatio,
+          light: light,
         );
         return;
       }
@@ -116,6 +136,10 @@ class GooeyFillPainter extends CustomPainter {
     f!.paint(canvas, active.shift(o), origin: o, cell: cell);
     canvas.restore();
   }
+
+  /// The neck between this shape and shape [j], if necks are on.
+  GooeyNeckGeometry? _neck(int j) =>
+      scene.style.neck ? scene.neckBetween(index, j) : null;
 
   static RRect _pill(Size size) => RRect.fromRectAndRadius(
         Offset.zero & size,
