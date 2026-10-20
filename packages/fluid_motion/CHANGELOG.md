@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.0 – 2026-10-20
 
 - Colour blending with several touching shapes: a shape between two others
   now blends towards both, with no hard edge where one takes over. Up to

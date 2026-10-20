@@ -56,6 +56,7 @@ dependencies:
     git:
       url: https://github.com/efranka/fluid_motion.git
       path: packages/fluid_motion
+      ref: v0.2.0   # a tag, so your app does not change under you
 ```
 
 Then load the shader once at startup. If it fails, the CPU version is used
