@@ -1,3 +1,17 @@
+## 0.3.0 – 2026-10-20
+
+- "Reduce motion" is respected by the components themselves.
+  `PressScale` does not squeeze, and `GooeyStage` switches the scene's
+  effects off (`GooeyScene.reduceMotion`), with no code in the app.
+- `MotionScope(reduceMotion:)` forces "Reduce motion" on or off below it
+  (an in-app setting, or a test); `reduceMotionOf` reads it before the
+  system setting.
+- `DragSpringController.reduceMotion` now also makes every spring critically
+  damped (followers too, even with a loose spring), lets followers move
+  without their delay, returns the rubber band without a bounce, and never
+  calls `onOvershoot`.
+- `PressSpring.reduceMotion`, set by `PressScale`.
+
 ## 0.2.0 – 2026-10-20
 
 - Colour blending with several touching shapes: a shape between two others

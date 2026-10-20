@@ -35,6 +35,16 @@ passes them down, together with `reduceMotionOf(context)`.
   velocity for scrolls is measured from the accumulated (mapped) delta, not
   from `metrics.pixels`, so two-axis scrolling does not mix positions.
 
+**Reduce motion.** `MotionScope.reduceMotionOf` = the nearest
+`MotionScope.reduceMotion`, else `MediaQuery.disableAnimations`. Widgets read
+it themselves: `PressScale` sets `PressSpring.reduceMotion` in build (only a
+flag – the scale changes on the next press, since other layers may share the
+spring), and `GooeyStage` sets `GooeyScene.reduceMotion` in build, which
+`_limited` applies on top of the requested style (safe during build because
+everything listening to the style lives below the stage). Controllers have no
+context; `DragSpringController.reduceMotion` makes every spring critically
+damped, drops follower delays and `onOvershoot`.
+
 **`MotionTransform`** – applies a `Matrix4` at paint time from a `Listenable`
 (and implements `applyPaintTransform`, so hit testing and `localToGlobal`
 stay correct). No rebuild or layout per frame.

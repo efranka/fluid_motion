@@ -1,12 +1,15 @@
 # Status
 
-Where things stand (version 0.2.0, October 2026). Update this file when
+Where things stand (version 0.3.0, October 2026). Update this file when
 something here changes.
 
 ## Ready
 
 - Used from an app as a git dependency pinned to a tag (see README).
-- Analyzer clean, 59 tests.
+- Analyzer clean, 65 tests.
+- "Reduce motion": `PressScale` and `GooeyStage` follow it by themselves;
+  `DragSpringController` and `SegmentSpring` take it as a property (no
+  context). See the README section.
 - Measured on an iPhone 11: native iOS about 4.4 ms per frame with the GPU;
   web in Safari runs smoothly after the first fold (see the known issue).
 
@@ -14,7 +17,6 @@ something here changes.
 
 | Item | What | Notes |
 |---|---|---|
-| A1 | Components respect "Reduce motion" by themselves | Today the app passes `GooeyStyle.off` / `reduceMotion` from `MotionScope.reduceMotionOf` |
 | P1 | One shared frame-time measurer instead of one callback per `MotionQuality` | Persistent frame callbacks cannot be removed, only muted |
 | R1 | Test native Android on a real phone, GPU and CPU | Only iOS and web tested |
 | Docs | GIF or video at the top of the README | |
@@ -53,3 +55,7 @@ load, but this should be found and fixed before relying on it.
 - Flutter 3.41 and 3.47 measured the same; today's frame cost is not a
   regression from the upgrade.
 - wasm/skwasm: white screen in Safari; the web build stays on CanvasKit.
+- "Reduce motion" (A1, 0.3.0): the drag controller still glides (critically
+  damped) instead of jumping, because the fold follows the user's own scroll
+  or drag. Controllers without a context are not made automatic (no hidden
+  global state); the owning widget sets `reduceMotion`.

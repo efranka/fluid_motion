@@ -19,16 +19,27 @@ class PressSpring {
   final double pressedScale;
   final SpringDescription _down, _up;
 
+  /// "Reduce motion": a press does not squeeze. [PressScale] sets this from
+  /// [MotionScope.reduceMotionOf] by itself.
+  bool reduceMotion = false;
+
   static final _defaultDown =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 900, ratio: 1);
   static final _defaultUp =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 400, ratio: 0.5);
 
-  void press(bool down) => scale.springTo(
-        down ? pressedScale : 1,
-        down ? _down : _up,
-        velocity: scale.velocity,
-      );
+  void press(bool down) {
+    if (reduceMotion) {
+      // Back to rest at once if it was squeezed when the setting changed.
+      if (scale.value != 1 || scale.isAnimating) scale.value = 1;
+      return;
+    }
+    scale.springTo(
+      down ? pressedScale : 1,
+      down ? _down : _up,
+      velocity: scale.velocity,
+    );
+  }
 
   void dispose() => scale.dispose();
 }
@@ -37,6 +48,8 @@ class PressSpring {
 /// does not compete with the children's gestures. With a shared [spring]
 /// several layers follow the same press; [listen] = false means the layer
 /// only follows along and does not react to touch itself.
+///
+/// With "Reduce motion" ([MotionScope.reduceMotionOf]) it does not squeeze.
 class PressScale extends StatefulWidget {
   const PressScale({
     super.key,
@@ -84,6 +97,9 @@ class _PressScaleState extends State<PressScale>
 
   @override
   Widget build(BuildContext context) {
+    // Only a flag: the scale itself changes on the next press, never during
+    // build (other layers may share the spring).
+    _spring.reduceMotion = MotionScope.reduceMotionOf(context);
     final scaled = ScaleTransition(scale: _spring.scale, child: widget.child);
     if (!widget.listen) return scaled;
     return Listener(

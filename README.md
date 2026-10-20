@@ -56,7 +56,7 @@ dependencies:
     git:
       url: https://github.com/efranka/fluid_motion.git
       path: packages/fluid_motion
-      ref: v0.2.0   # a tag, so your app does not change under you
+      ref: v0.3.0   # a tag, so your app does not change under you
 ```
 
 Then load the shader once at startup. If it fails, the CPU version is used
@@ -134,8 +134,8 @@ GooeyStage(scene: scene, children: [
 
 Each effect can be switched off on its own with
 `GooeyStyle(neck:, colorBlend:, blob:, contentBlend:, useShader:)`.
-`GooeyStyle.off` switches them all off, which the demos use for "Reduce
-motion".
+`GooeyStyle.off` switches them all off. With "Reduce motion" the stage does
+that by itself (see below).
 
 ### Outlines
 
@@ -158,6 +158,28 @@ custom geometry is drawn on the GPU if its `GooeySdf.gpu` returns one of the
 Put `MotionScope(tokens: MotionTokens(...))` at the top of the app to change
 springs and timings for every component in one place, just like colour and
 typography tokens.
+
+### Reduce motion
+
+`MotionScope.reduceMotionOf(context)` is true when the user has switched on
+"Reduce motion" in the system settings, or when the nearest
+`MotionScope(reduceMotion: true)` says so (an in-app setting, or a test).
+Elements then show the state change itself, without bounce, stretch or blobs.
+
+| Component | With "Reduce motion" | Automatic? |
+|---|---|---|
+| `PressScale` | Does not squeeze | Yes |
+| `GooeyStage` / `GooeyScene` | Neck, colour blend, blobs and content blend off; the shapes are still drawn | Yes, through the stage (`GooeyScene.reduceMotion`) |
+| `DragSpringController` | Still follows the finger and glides into place, but never bounces; followers move with it instead of lagging behind; `onOvershoot` never fires | Set `reduceMotion` (it has no context) |
+| `SegmentSpring` | Set `stretchy = false`: the indicator jumps | Set it yourself |
+
+```dart
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+  _controller.reduceMotion = MotionScope.reduceMotionOf(context);
+}
+```
 
 ## Automatic quality
 

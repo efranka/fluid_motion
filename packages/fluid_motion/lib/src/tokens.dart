@@ -63,27 +63,40 @@ class MotionTokens {
   static const standard = MotionTokens();
 }
 
-/// Passes [MotionTokens] down to everything below it.
+/// Passes [MotionTokens] down to everything below it – and, if set, an
+/// explicit "Reduce motion" choice that overrides the system setting.
 class MotionScope extends InheritedWidget {
   const MotionScope({
     super.key,
     this.tokens = MotionTokens.standard,
+    this.reduceMotion,
     required super.child,
   });
 
   final MotionTokens tokens;
+
+  /// Forces "Reduce motion" on (true) or off (false) for everything below,
+  /// e.g. for an in-app setting or a test. Null follows the system setting
+  /// (`MediaQuery.disableAnimations`).
+  final bool? reduceMotion;
 
   /// Tokens from the nearest [MotionScope] – or the standard ones.
   static MotionTokens of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<MotionScope>()?.tokens ??
       MotionTokens.standard;
 
-  /// Whether the user has asked for less motion ("Reduce motion").
-  /// Components should then only show the state change itself – without
-  /// bounce, stretch, blobs and the like.
+  /// Whether the user has asked for less motion ("Reduce motion"): the
+  /// nearest [MotionScope.reduceMotion] if set, otherwise the system setting.
+  /// Components then only show the state change itself – without bounce,
+  /// stretch, blobs and the like. [PressScale] and [GooeyStage] follow it by
+  /// themselves; controllers without a context take it as a property (see
+  /// [DragSpringController.reduceMotion]).
   static bool reduceMotionOf(BuildContext context) =>
-      MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+      context.dependOnInheritedWidgetOfExactType<MotionScope>()?.reduceMotion ??
+      MediaQuery.maybeDisableAnimationsOf(context) ??
+      false;
 
   @override
-  bool updateShouldNotify(MotionScope oldWidget) => oldWidget.tokens != tokens;
+  bool updateShouldNotify(MotionScope oldWidget) =>
+      oldWidget.tokens != tokens || oldWidget.reduceMotion != reduceMotion;
 }

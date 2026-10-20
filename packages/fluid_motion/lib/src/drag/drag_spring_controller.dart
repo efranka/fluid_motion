@@ -190,7 +190,12 @@ class DragSpringController {
   /// switch.
   double wheelThreshold;
 
-  /// "Reduce motion": no velocity is carried over, so nothing bounces.
+  /// "Reduce motion": the element still follows the finger and glides to its
+  /// state, but nothing bounces or overshoots (every spring is critically
+  /// damped, no velocity is carried over), followers move with it instead
+  /// of lagging behind, and [onOvershoot] never fires. The controller has no
+  /// context, so set it from `MotionScope.reduceMotionOf(context)` in
+  /// `didChangeDependencies` of the widget that owns it.
   bool reduceMotion;
 
   /// Called once when the value overshoots its target during an animation
@@ -239,6 +244,16 @@ class DragSpringController {
 
   static final _leanSpring =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 420, ratio: 0.55);
+  static final _calmLeanSpring =
+      SpringDescription.withDampingRatio(mass: 1, stiffness: 420, ratio: 1);
+
+  /// [spring] without any bounce, for "Reduce motion".
+  static SpringDescription _noBounce(EnergySpring spring) =>
+      SpringDescription.withDampingRatio(
+        mass: spring.mass,
+        stiffness: spring.stiffness,
+        ratio: 1,
+      );
 
   AnimationStatusListener _snapWhenSettled(AnimationController c) => (status) {
         if (status != AnimationStatus.completed) return;
@@ -482,7 +497,11 @@ class DragSpringController {
   void _releaseRubber() {
     _rubbering = false;
     _rubberPx = 0;
-    lean.springTo(0, _leanSpring, velocity: lean.velocity);
+    lean.springTo(
+      0,
+      reduceMotion ? _calmLeanSpring : _leanSpring,
+      velocity: reduceMotion ? 0 : lean.velocity,
+    );
   }
 
   /// Animate towards [target] (0 or 1) with start velocity [velocity]
@@ -509,13 +528,19 @@ class DragSpringController {
     final speed = velocityBounce ? raw.abs() * distance : 0.0;
     final v = raw.clamp(-8.0, 8.0);
 
-    value.springTo(target, spring.forSpeed(speed), velocity: v);
+    value.springTo(
+      target,
+      reduceMotion ? _noBounce(spring) : spring.forSpeed(speed),
+      velocity: v,
+    );
     _prevVelocity = v;
 
     for (final f in _followers) {
       f._timer?.cancel();
-      final s = f.spring.forSpeed(speed, ratioOffset: f.ratioOffset);
-      if (_driven || f.delay == Duration.zero) {
+      final s = reduceMotion
+          ? _noBounce(f.spring)
+          : f.spring.forSpeed(speed, ratioOffset: f.ratioOffset);
+      if (_driven || reduceMotion || f.delay == Duration.zero) {
         // Moving with the finger: continue at the same speed (no hitch).
         f.controller.springTo(
           target,
@@ -535,7 +560,11 @@ class DragSpringController {
   void _onTick() {
     final v = value.value;
     final callback = onOvershoot;
-    if (callback != null && !_kicked && !_rubbering && value.isAnimating) {
+    if (callback != null &&
+        !reduceMotion &&
+        !_kicked &&
+        !_rubbering &&
+        value.isAnimating) {
       final crossedUp = _prev <= _target && v > _target;
       final crossedDown = _prev >= _target && v < _target;
       if (crossedUp || crossedDown) {

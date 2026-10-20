@@ -231,7 +231,7 @@ class GooeyScene {
   late final ValueNotifier<GooeyStyle> _styleNotifier;
 
   /// The style in use right now – the requested style minus the effects
-  /// [quality] has switched off.
+  /// [quality] or [reduceMotion] has switched off.
   GooeyStyle get style => _style;
 
   /// The requested style.
@@ -259,7 +259,28 @@ class GooeyScene {
 
   void _onQuality() => _applyStyle();
 
+  bool _reduceMotion = false;
+
+  /// "Reduce motion": every effect is off (neck, colour blend, blobs,
+  /// content), whatever [style] asks for; the shapes themselves are still
+  /// drawn. [GooeyStage] sets this from [MotionScope.reduceMotionOf] by
+  /// itself.
+  bool get reduceMotion => _reduceMotion;
+  set reduceMotion(bool value) {
+    if (value == _reduceMotion) return;
+    _reduceMotion = value;
+    _applyStyle();
+  }
+
   GooeyStyle _limited(GooeyStyle s) {
+    if (_reduceMotion) {
+      return s.copyWith(
+        neck: false,
+        colorBlend: false,
+        blob: false,
+        contentBlend: false,
+      );
+    }
     final q = _quality;
     if (q == null) return s;
     return s.copyWith(

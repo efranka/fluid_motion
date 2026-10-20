@@ -64,8 +64,10 @@ cd example && flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 -
   in exactly the same order – see ARCHITECTURE. Validate the shader syntax
   with `glslangValidator` if available; Flutter itself only compiles it on
   build.
-- Use `MotionScope.reduceMotionOf(context)` and `GooeyStyle.off` for
-  "Reduce motion" (components do not yet do this by themselves – STATUS A1).
+- "Reduce motion": `MotionScope.reduceMotionOf(context)`. Widgets follow it
+  by themselves (`PressScale`, `GooeyStage`); controllers without a context
+  take a `reduceMotion` property. A new component must do one of the two,
+  with a test (`test/reduce_motion_test.dart`).
 
 ## Measuring performance
 

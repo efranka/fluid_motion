@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../tokens.dart';
+
 import 'fill.dart';
 import 'influence.dart';
 import 'painter.dart';
@@ -8,6 +10,9 @@ import 'scene.dart';
 /// The scene's coordinate system: a [Stack] whose top left corner is (0, 0)
 /// for every rect in [GooeyScene.members]. Put the shapes, their content and
 /// the [GooeyBackdrop] in here.
+///
+/// It also passes "Reduce motion" ([MotionScope.reduceMotionOf]) on to
+/// [GooeyScene.reduceMotion], so the effects switch off by themselves.
 class GooeyStage extends StatelessWidget {
   const GooeyStage({
     super.key,
@@ -21,11 +26,16 @@ class GooeyStage extends StatelessWidget {
   final Clip clipBehavior;
 
   @override
-  Widget build(BuildContext context) => Stack(
-        key: scene.stageKey,
-        clipBehavior: clipBehavior,
-        children: children,
-      );
+  Widget build(BuildContext context) {
+    // Safe during build: what listens to the scene's style (GooeyContent and
+    // the painters) lives below the stage.
+    scene.reduceMotion = MotionScope.reduceMotionOf(context);
+    return Stack(
+      key: scene.stageKey,
+      clipBehavior: clipBehavior,
+      children: children,
+    );
+  }
 }
 
 /// The necks between the shapes. Fills the whole [GooeyStage] and must lie
