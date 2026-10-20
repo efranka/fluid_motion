@@ -7,6 +7,14 @@
   first (`MotionFeature.multiBlend`).
 - `GooeyShader.paintSurface` takes `others` and `blendWidths` lists instead
   of `other` and `blendWidth`.
+- `ScrollMorphBehavior`: choose which scrolls fold and unfold a
+  `DragSpringController` (`collapse`: forward, any movement or never;
+  `expand`: backward, at the start or never; which axes; nested
+  scrollables or not). `collapseOnly` folds on any scroll and only unfolds
+  on a tap.
+- `handleScrollNotification` ignores nested and horizontal scrollables by
+  default, so a carousel in the list no longer folds the bar.
+- `dragStart` resets the measured drag distance between drags.
 - Contact between shapes with holes (a ring) is measured robustly.
 
 ## 0.1.0

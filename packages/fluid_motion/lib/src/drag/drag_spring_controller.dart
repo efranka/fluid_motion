@@ -38,6 +38,95 @@ class MorphFollower {
   Timer? _timer;
 }
 
+/// What scrolling folds the element (towards 1) – see [ScrollMorphBehavior].
+enum ScrollCollapse {
+  /// Scrolling forward (content moves up, or left).
+  forward,
+
+  /// Any scrolling, in any direction – e.g. a timeline you scroll both ways,
+  /// where the element should get out of the way as soon as you move.
+  anyMovement,
+
+  /// Scrolling never folds it (only [DragSpringController.animateTo]).
+  never,
+}
+
+/// What scrolling unfolds the element (towards 0) – see
+/// [ScrollMorphBehavior].
+enum ScrollExpand {
+  /// Scrolling back (towards the start).
+  backward,
+
+  /// Only reaching the very start of the content.
+  atStart,
+
+  /// Scrolling never unfolds it – only a tap or another action that calls
+  /// [DragSpringController.animateTo] with 0.
+  never,
+}
+
+/// Which scrolls drive a [DragSpringController], and how: pass it to
+/// [DragSpringController.handleScrollNotification].
+///
+/// ```dart
+/// // A page of timelines scrolled both ways: any scroll folds the bar, and
+/// // only a tap on it unfolds it again.
+/// controller.handleScrollNotification(n, behavior: ScrollMorphBehavior.collapseOnly);
+/// ```
+@immutable
+class ScrollMorphBehavior {
+  const ScrollMorphBehavior({
+    this.collapse = ScrollCollapse.forward,
+    this.expand = ScrollExpand.backward,
+    this.axes = const {Axis.vertical},
+    this.nested = false,
+  });
+
+  /// Scroll down folds, scroll up unfolds – the main vertical list only, so
+  /// a horizontal carousel inside it does not move the element.
+  static const standard = ScrollMorphBehavior();
+
+  /// Any scroll, in any direction and in nested scrollables, folds; scrolling
+  /// never unfolds. Unfold with a tap ([DragSpringController.animateTo]).
+  static const collapseOnly = ScrollMorphBehavior(
+    collapse: ScrollCollapse.anyMovement,
+    expand: ScrollExpand.never,
+    axes: {Axis.vertical, Axis.horizontal},
+    nested: true,
+  );
+
+  /// What folds the element.
+  final ScrollCollapse collapse;
+
+  /// What unfolds it. With [ScrollCollapse.anyMovement] every scroll folds,
+  /// so only [ScrollExpand.atStart] or [ScrollExpand.never] make sense.
+  final ScrollExpand expand;
+
+  /// The scroll directions that count.
+  final Set<Axis> axes;
+
+  /// Whether scrollables inside the listened one (a carousel in a list)
+  /// count too. Off: only the outermost one below the listener.
+  final bool nested;
+
+  /// Whether [n] should drive the element at all.
+  bool accepts(ScrollNotification n) =>
+      (nested || n.depth == 0) && axes.contains(n.metrics.axis);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ScrollMorphBehavior &&
+      other.collapse == collapse &&
+      other.expand == expand &&
+      other.nested == nested &&
+      other.axes.length == axes.length &&
+      other.axes.containsAll(axes);
+
+  @override
+  int get hashCode =>
+      Object.hash(collapse, expand, nested, Object.hashAllUnordered(axes));
+}
+
 /// "The finger drives, the spring takes over" – the reusable core behind
 /// elements that switch between two states with a drag or a scroll: a
 /// bottom bar that folds up, a bottom sheet, a swipe card.
@@ -175,11 +264,18 @@ class DragSpringController {
     _tracker?.addPosition(time, position);
   }
 
+  /// The axis of the scroll being followed, and whether every direction
+  /// counts as "towards 1" ([ScrollCollapse.anyMovement]).
+  Axis _axis = Axis.vertical;
+  bool _anyDirection = false;
+
   /// The finger's velocity in the scroll direction (px/s, positive = to 1).
   double _fingerVelocity() {
     final estimate = _tracker?.getVelocityEstimate();
     if (estimate == null) return _scrollVelocity;
-    final finger = -estimate.pixelsPerSecond.dy;
+    final px = estimate.pixelsPerSecond;
+    var finger = _axis == Axis.vertical ? -px.dy : -px.dx;
+    if (_anyDirection) finger = finger.abs();
     // VelocityTracker assumes the finger has stopped if more than 40 ms pass
     // between two touches. When a frame drops, touches arrive exactly with
     // such gaps and the velocity is measured as 0 – and the bounce is lost.
@@ -193,24 +289,48 @@ class DragSpringController {
   // -------------------------------------------------------------------------
 
   /// Drive the transition from a scroll: put it in a
-  /// `NotificationListener<ScrollNotification>`. Scrolling forward (content
-  /// moves up) goes towards 1, back towards 0. Always returns false, so the
-  /// notification keeps bubbling up the tree.
-  bool handleScrollNotification(ScrollNotification n) {
+  /// `NotificationListener<ScrollNotification>`. By default scrolling the
+  /// main vertical list forward (content moves up) goes towards 1, and back
+  /// towards 0; [behavior] decides which scrolls count and what they do (see
+  /// [ScrollMorphBehavior]). Always returns false, so the notification keeps
+  /// bubbling up the tree.
+  bool handleScrollNotification(
+    ScrollNotification n, {
+    ScrollMorphBehavior behavior = ScrollMorphBehavior.standard,
+  }) {
+    if (!behavior.accepts(n)) return false;
+    final any = behavior.collapse == ScrollCollapse.anyMovement;
+    final atStart = n.metrics.pixels <= n.metrics.minScrollExtent;
+
     if (n is ScrollStartNotification && n.dragDetails != null) {
       _landed = false;
       _rubberPx = 0;
+      _axis = n.metrics.axis;
+      _anyDirection = any;
       _tracker = VelocityTracker.withKind(PointerDeviceKind.touch);
       _trackFinger(
           n.dragDetails!.sourceTimeStamp, n.dragDetails!.globalPosition);
     }
 
     if (n is ScrollUpdateNotification) {
-      _trackPosition(n.metrics.pixels);
-      final delta = n.scrollDelta ?? 0;
+      // Towards 1 is positive. With "any movement" every scroll is.
+      final raw = n.scrollDelta ?? 0;
+      final towards = any ? raw.abs() : raw;
+      // Velocity from the scrolled distance (not the position, which differs
+      // between the axes of a two-way scroll).
+      _scrollPosition += towards;
+      _trackPosition(_scrollPosition);
+      // What this behaviour lets through.
+      var delta = towards;
+      if (delta > 0 && behavior.collapse == ScrollCollapse.never) delta = 0;
+      if (delta < 0 && behavior.expand != ScrollExpand.backward) delta = 0;
       final drag = n.dragDetails;
 
-      if (drag != null) {
+      if (behavior.expand == ScrollExpand.atStart && atStart && raw < 0) {
+        // Back at the very start: unfold.
+        _dragging = false;
+        animateTo(0, velocity: -_scrollVelocity.abs() / distance);
+      } else if (drag != null) {
         _trackFinger(drag.sourceTimeStamp, drag.globalPosition);
         _dragDelta(delta);
       } else if (_rubbering) {
@@ -218,14 +338,17 @@ class DragSpringController {
       } else if (_dragging) {
         _dragging = false;
         _release(_fingerVelocity());
-      } else if (n.metrics.pixels <= 0) {
-        animateTo(0);
+      } else if (atStart) {
+        if (behavior.expand != ScrollExpand.never) animateTo(0);
       } else if (_target != 1 &&
+          behavior.collapse != ScrollCollapse.never &&
           _scrollVelocity > wheelThreshold &&
-          n.metrics.pixels > 40) {
+          n.metrics.pixels - n.metrics.minScrollExtent > 40) {
         // Mouse/trackpad, where there is no finger drag.
         animateTo(1, velocity: _scrollVelocity / distance);
-      } else if (_target == 1 && _scrollVelocity < -wheelThreshold) {
+      } else if (_target == 1 &&
+          behavior.expand == ScrollExpand.backward &&
+          _scrollVelocity < -wheelThreshold) {
         animateTo(0, velocity: _scrollVelocity / distance);
       }
     } else if (n is ScrollEndNotification) {
@@ -233,11 +356,16 @@ class DragSpringController {
         _releaseRubber();
       } else if (_dragging) {
         _dragging = false;
-        _release(-(n.dragDetails?.primaryVelocity ?? 0));
+        var v = -(n.dragDetails?.primaryVelocity ?? 0);
+        if (any) v = v.abs();
+        _release(v);
       }
     }
     return false;
   }
+
+  /// The scrolled distance towards 1, for measuring the scroll velocity.
+  double _scrollPosition = 0;
 
   // -------------------------------------------------------------------------
   // Direct drags (sheets, cards)
@@ -248,9 +376,12 @@ class DragSpringController {
     _landed = false;
     _rubberPx = 0;
     _tracker = null;
+    _axis = Axis.vertical;
+    _anyDirection = false;
     _scrollVelocity = 0;
     _lastMs = _clock.elapsedMilliseconds;
     _lastPixels = 0;
+    _dragPixels = 0;
   }
 
   double _dragPixels = 0;

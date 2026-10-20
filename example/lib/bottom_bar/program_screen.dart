@@ -121,6 +121,7 @@ class _ProgramScreenState extends State<ProgramScreen>
   bool _useShader = true;
   bool _hideBar = false;
   bool _freezeMorph = false;
+  bool _collapseOnly = false;
   bool _hideContent = false;
   MotionTokens _tokens = MotionTokens.standard;
   ColorScheme? _cs;
@@ -538,7 +539,13 @@ class _ProgramScreenState extends State<ProgramScreen>
               RepaintBoundary(
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (n) =>
-                      !_freezeMorph && _morph.handleScrollNotification(n),
+                      !_freezeMorph &&
+                      _morph.handleScrollNotification(
+                        n,
+                        behavior: _collapseOnly
+                            ? ScrollMorphBehavior.collapseOnly
+                            : ScrollMorphBehavior.standard,
+                      ),
                   child: ListView.builder(
                     physics: const BouncingScrollPhysics(
                       parent: AlwaysScrollableScrollPhysics(),
@@ -619,6 +626,11 @@ class _ProgramScreenState extends State<ProgramScreen>
                         setState(() => _freezeMorph = v);
                         if (v) _morph.animateTo(0);
                       },
+                    ),
+                    (
+                      'Fold on any scroll, unfold on tap',
+                      _collapseOnly,
+                      (v) => setState(() => _collapseOnly = v),
                     ),
                     (
                       'Hide icons and text in the bars',

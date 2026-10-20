@@ -81,6 +81,34 @@ Future<void> main() async {
 | Arcs, timing | `MotionTransform` | Transform at paint time, with no rebuild and no layout |
 | Fluid material | `GooeyScene` and friends | Neck, colour blend, blobs and dissolving content |
 
+### Folding with scroll
+
+`DragSpringController.handleScrollNotification` folds an element (towards 1)
+and unfolds it (towards 0) as the user scrolls. `ScrollMorphBehavior` decides
+which scrolls count and what they do:
+
+```dart
+NotificationListener<ScrollNotification>(
+  onNotification: (n) => controller.handleScrollNotification(
+    n,
+    behavior: ScrollMorphBehavior.collapseOnly,
+  ),
+  child: myTimelines,
+);
+
+// Unfold on tap:
+onTap: () => controller.animateTo(0),
+```
+
+| Behaviour | Folds when | Unfolds when |
+|---|---|---|
+| `standard` (default) | the main vertical list scrolls down | it scrolls up |
+| `collapseOnly` | anything scrolls, either axis, nested too | never (call `animateTo(0)`) |
+| `ScrollMorphBehavior(collapse:, expand:, axes:, nested:)` | `forward`, `anyMovement` or `never` | `backward`, `atStart` or `never` |
+
+By default only the outermost vertical scrollable counts, so a horizontal
+carousel inside the list does not move the element.
+
 ### Gooey on any element
 
 ```dart
