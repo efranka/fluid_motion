@@ -25,6 +25,7 @@ something here changes.
 | L3 | `MotionQuality` drops the shadow first, then the edge light | |
 | L4 | Edge light on the CPU fallback | Today the CPU path draws the shapes without it |
 | L5 | `MotionWarmUp` draws the shadow mode and a lit surface | Same program, so probably not needed – check the Safari first fold |
+| L6 | Edge over the content, as an option | Today the edge is part of `GooeySurface`'s background, so the shape's content covers it (see "Edge and content" below) |
 
 ## Edge light along the merged shape (investigation, 2026-10-20)
 
@@ -119,6 +120,19 @@ is harder than CanvasKit's; checked by eye in Chrome as well).
 ![Light mode, a narrow neck (Chrome)](images/edge_light_web_light_gap4.png)
 ![Light mode, merged (Chrome)](images/edge_light_web_light_merged.png)
 ![Dark mode, strong glow recipe, touching (Chrome)](images/edge_light_web_dark_strong_glow.png)
+
+**Edge and content.** The edge, glows and gradient are painted by
+`GooeySurface` as the shape's background, so whatever the app puts on top
+(`GooeySurface(child:)`, `GooeyContent`, or a widget stacked over the shape)
+covers them. A plain Flutter version usually strokes the edge in a
+foreground painter, OVER the content. It only matters where content reaches
+the outline: a full-bleed child (e.g. a `NavigationBar` with its own
+opaque background, an image or a selected pill touching the edge) hides the
+edge there. For an app switching over: give that content a transparent
+background, or keep it a few px inside the outline. If that is not enough,
+L6 adds a foreground layer (`GooeyEdge`, the edge band only, in its own
+painter over the content) – the same shader, one more pass over the
+outline.
 
 **5. Cost**
 
