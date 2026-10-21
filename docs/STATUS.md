@@ -158,8 +158,8 @@ hitch (Known issues). If the shadow is too heavy (L2): Flutter's own
 `BoxShadow` per shape while apart, the shader's shadow only while connected,
 and several shadows in one pass.
 
-**6. Measured (L1)** – Erik's iPhone (828 px wide screenshots: an iPhone 11
-or XR), Safari, 2026-10-21 14:58–15:01, battery 40 %. The example built
+**6. Measured (L1)** – Erik's iPhone 11 (confirmed by Erik 2026-10-21; the
+device the cost estimate in §5 is worked out for), Safari, 2026-10-21 14:58–15:01, battery 40 %. The example built
 from `c465e94`, Bottom bar demo, panel: Automatic quality off, Reset, fold
 and unfold five times. One run each. Native not measured.
 
