@@ -124,7 +124,7 @@ class _ProgramScreenState extends State<ProgramScreen>
   bool _freezeMorph = false;
   bool _collapseOnly = false;
   bool _hideContent = false;
-  // Prototype: edge light and shadow along the merged outline.
+  // Edge light and shadow along the merged outline (debug panel).
   bool _edgeLight = false;
   bool _shadow = false;
   bool get _lit => _edgeLight || _shadow;
@@ -197,7 +197,7 @@ class _ProgramScreenState extends State<ProgramScreen>
         light: !_lit ? null : _light,
       );
 
-  /// The prototype's light: the example's rim light recipe, with or without
+  /// The bar's light: the example's rim light recipe, with or without
   /// its edge and its shadow.
   GooeyLight get _light {
     final cs = _cs!;
@@ -662,12 +662,12 @@ class _ProgramScreenState extends State<ProgramScreen>
                       (v) => setState(() => _hideContent = v),
                     ),
                     (
-                      'Edge light along the merged shape (prototype)',
+                      'Edge light along the merged shape',
                       _edgeLight,
                       (v) => _setLight(edge: v),
                     ),
                     (
-                      'Shadow under the merged shape (prototype)',
+                      'Shadow under the merged shape',
                       _shadow,
                       (v) => _setLight(shadow: v),
                     ),

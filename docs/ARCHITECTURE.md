@@ -119,7 +119,7 @@ One program, three modes:
   `1 / (1 + exp(1.702 · d / sigma))`). Drawn by `GooeyBackdrop` before the
   necks.
 
-**Edge light** (`GooeyStyle.light`, prototype). Modes 0 and 1 lay a fill
+**Edge light** (`GooeyStyle.light`, `gooey/light.dart`). Modes 0 and 1 lay a fill
 gradient, an inner glow and a thin edge over the colour. The edge is a band
 of the MERGED distance, not of the shape's own: the neck pass uses its own
 smooth-min `sm`; the surface pass recomputes the same smooth-min towards

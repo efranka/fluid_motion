@@ -56,7 +56,7 @@ dependencies:
     git:
       url: https://github.com/efranka/fluid_motion.git
       path: packages/fluid_motion
-      ref: v0.3.0   # a tag, so your app does not change under you
+      ref: v0.4.0   # a tag, so your app does not change under you
 ```
 
 Then load the shader once at startup. If it fails, the CPU version is used
@@ -141,6 +141,48 @@ Each effect can be switched off on its own with
 `GooeyStyle(neck:, colorBlend:, blob:, contentBlend:, useShader:)`.
 `GooeyStyle.off` switches them all off. With "Reduce motion" the stage does
 that by itself (see below).
+
+### Edge light
+
+`GooeyStyle(light: GooeyLight(...))` draws an edge, glows, a fill gradient
+and shadows along the **merged** outline: the edge runs on along the neck and
+vanishes where the shapes have flowed together, and there is one shadow
+under the merged shape instead of two that darken where they overlap.
+
+```dart
+GooeyStyle(
+  light: GooeyLight(
+    edgeWidth: 1,
+    edgeColors: [Colors.white.withValues(alpha: 0.3), Colors.white.withValues(alpha: 0.05)],
+    edgeStops: const [0, 1],                  // top → bottom
+    glowStart: Colors.white.withValues(alpha: 0.1),
+    shadows: const [BoxShadow(color: Color(0x40000000), offset: Offset(0, 4), blurRadius: 16)],
+  ),
+)
+```
+
+| Part | Parameters |
+|---|---|
+| Edge, inside the outline, with a gradient | `edgeWidth` (0 = none), `edgeColors` + `edgeStops` (1–4) |
+| Gradient axis, in each shape's own rect | `begin`, `end` (like `LinearGradient`, default top → bottom) |
+| Fill gradient | `fillStart`, `fillEnd` (laid over the fill at each end) |
+| Inner glow from the ends of the axis | `glowStart`, `glowEnd`, `glowDepth` |
+| Inner glow along the whole outline | `outlineGlow`, `outlineGlowDepth` |
+| Shadows under the merged shape | `shadows` (`BoxShadow`s, one GPU pass each) |
+
+Every part is optional; the default is a hairline edge. Colours are laid
+over each shape's own (blended) colour, so one light fits every shape in the
+scene – use white or black with low opacity, or any colour. It works with
+every outline. "Reduce motion" keeps it (it is not motion).
+
+The light is the shape's background, painted by `GooeySurface`, so content
+on top covers it where the content reaches the outline: give such content a
+transparent background, or keep it a few px inside. It is drawn on the GPU
+only; the CPU fallback draws the shapes without it.
+
+The example's Edge light demo shows the same light drawn the plain Flutter
+way one shape at a time next to the merged version, with four recipes
+(`example/lib/edge_light/recipes.dart`).
 
 ### Outlines
 
@@ -254,7 +296,8 @@ the shader. `GooeyStyle.blendNeighbours` sets how many are used (0 to 3).
 
 The CPU version is only a fallback. It is used if the shader cannot load (or
 in widget tests), for a polygon with more than 24 corners, and for custom
-geometries without a GPU description. It draws the same thing.
+geometries without a GPU description. It draws the same thing, except the
+edge light.
 
 The shader assumes that `FlutterFragCoord()` is in local logical coordinates.
 If the shapes look offset or wrongly scaled with the GPU but right with the

@@ -1,15 +1,17 @@
 # Status
 
-Where things stand (version 0.3.0, October 2026). Update this file when
+Where things stand (version 0.4.0, October 2026). Update this file when
 something here changes.
 
 ## Ready
 
 - Used from an app as a git dependency pinned to a tag (see README).
-- Analyzer clean, 65 tests.
+- Analyzer clean, 67 tests in the package and 6 in the example.
 - "Reduce motion": `PressScale` and `GooeyStage` follow it by themselves;
   `DragSpringController` and `SegmentSpring` take it as a property (no
   context). See the README section.
+- Edge light along the merged shape (`GooeyLight`, 0.4.0): Safari on an
+  iPhone showed no measurable cost (L1 below).
 - Measured on an iPhone 11: native iOS about 4.4 ms per frame with the GPU;
   web in Safari runs smoothly after the first fold (see the known issue).
 
@@ -20,14 +22,13 @@ something here changes.
 | P1 | One shared frame-time measurer instead of one callback per `MotionQuality` | Persistent frame callbacks cannot be removed, only muted |
 | R1 | Test native Android on a real phone, GPU and CPU | Only iOS and web tested |
 | Docs | GIF or video at the top of the README | |
-| L1 | Edge light along the merged shape: measure on an iPhone 11 | Measured in Safari 2026-10-21: no measurable difference (see §6). Open: native, and a charged phone |
-| L2 | Cheaper shadow | Not needed by L1 – only if a later measurement shows the shadow |
+| L1 | Edge light: measure again before production – charged, cool phone, 2–3 runs per setting, native too | Safari 2026-10-21: no measurable difference (see §6). Erik: before production, not before the tag |
 | L3 | `MotionQuality` drops the shadow first, then the edge light | |
 | L4 | Edge light on the CPU fallback | Today the CPU path draws the shapes without it |
 | L5 | `MotionWarmUp` draws the shadow mode and a lit surface | Same program, so probably not needed – check the Safari first fold |
 | L6 | Edge over the content, as an option | Today the edge is part of `GooeySurface`'s background, so the shape's content covers it (see "Edge and content" below) |
 
-## Edge light along the merged shape (investigation, 2026-10-20)
+## Edge light along the merged shape (investigation 2026-10-20, released in 0.4.0)
 
 Erik 2026-10-20: *"Vil du hjælpe med at finde ud af om vi kan få pakken til
 at understøtte effekter som border og lyskanten"* – and the goal: it should
@@ -41,7 +42,8 @@ lighter at the top and a soft shadow), and gooey and that light cannot both
 paint the same surface. When the shapes flow together, the edge must follow
 the merged shape. Only its numbers are used here; nothing else from the app.
 
-Prototype on branch `prototype/edge-light` (GPU only, not released).
+Built on branch `prototype/edge-light`, merged and released in 0.4.0 (GPU
+only).
 Measured: likeness against plain Flutter (below), and Erik's iPhone in
 Safari (§6): no measurable cost.
 
@@ -185,16 +187,14 @@ What it says:
 4. **Still open:** native, and a charged, cool phone with a few runs per
    setting, before the light goes into a release.
 
-**7. For Erik** (recommendations after L1 in the message to Projektleder,
-2026-10-21)
+**7. Decided (Erik 2026-10-21: *"kør anbefalingen"*)**
 
-1. Gooey **and** rim light on the same bar is now possible. Look at the
-   Edge light demo (slide the gap) before deciding.
-2. One light for the whole scene (now), or per shape later
-   (`GooeyMember(light:)`, more uniforms)?
-3. The shadow: exactly under the merged shape (costs the most), or Flutter's
-   own per shape (cheap; darker where they overlap)? *Recommendation:
-   decide after the iPhone measurement.*
+1. Gooey **and** rim light on the same surface: yes.
+2. One light for the whole scene. Per shape (`GooeyMember(light:)`) only if
+   a need shows up.
+3. The exact shadow under the merged shape. L2 (cheaper shadow) is dropped.
+4. The new measurement (charged, cool phone, 2–3 runs per setting) comes
+   before production, not before the tag (L1).
 
 **8. Related:** the events app's `FLUID_MOTION.md` §6 and §8.4 and its
 `DESIGN.md` §5.1 (where the rim light's numbers come from).

@@ -1,9 +1,16 @@
-## Unreleased (branch `prototype/edge-light`)
+## 0.4.0 – 2026-10-21
 
-- Prototype: `GooeyStyle(light: GooeyLight(...))` – an edge with a
+- Edge light: `GooeyStyle(light: GooeyLight(...))` draws an edge with a
   gradient, a fill gradient, inner glows (from the ends of an axis and along
-  the outline) and soft shadows, all along the merged outline, every measure
-  and colour a parameter (GPU only). See docs/STATUS.md.
+  the outline) and shadows along the MERGED outline – the edge runs on along
+  the neck and vanishes where the shapes have flowed together. Every measure
+  and colour is a parameter, every part optional, any outline. GPU only.
+- `GooeyShader.paintNeck` and `paintSurface` take `light`; `paintSurface`
+  also `necks`. New `GooeyShader.paintShadow`. `GooeyBackdrop` draws the
+  shadows, so use it whenever the light has shadows.
+- The shader has a third mode (shadows) and 18 more uniforms;
+  `test/shader_uniforms_test.dart` checks the writer against the shader.
+- Example: an Edge light demo, compared with plain Flutter.
 
 ## 0.3.0 – 2026-10-20
 

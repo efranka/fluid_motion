@@ -18,8 +18,10 @@ import 'package:flutter/painting.dart';
 ///
 /// The default is a hairline edge and nothing else.
 ///
-/// Drawn on the GPU only (prototype); on the CPU fallback the shapes are
-/// drawn without it.
+/// Drawn on the GPU only; on the CPU fallback the shapes are drawn without
+/// it. It is the shape's background ([GooeySurface]), so content on top
+/// covers it where the content reaches the outline. The shadows are drawn
+/// by [GooeyBackdrop].
 @immutable
 class GooeyLight {
   const GooeyLight({
