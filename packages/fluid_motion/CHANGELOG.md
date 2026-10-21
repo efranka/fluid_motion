@@ -1,3 +1,19 @@
+## 0.5.0 – 2026-10-21
+
+- `SegmentTabs`: tabs with a stretchy indicator (`SegmentSpring` +
+  `SegmentIndicatorPainter`). Colours and shapes are parameters. Each tab is
+  a button for screen readers, focusable with a visible focus ring and
+  Enter/Space, at least 48 × 48; labels wrap or get an ellipsis instead of
+  shrinking with large text. "Reduce motion": the indicator jumps.
+- `FlyingIcon` + `FlightPoint`: a widget flies from an anchor (a keyed spot,
+  e.g. `SegmentTabs.selectedIconKey`) to a target along an arc, at paint
+  time. "Reduce motion": it jumps halfway instead of flying.
+- `SegmentSpring` takes its `lead` and `trail` springs; `SegmentTabs` uses
+  `MotionTokens.indicatorLeadStiffness`/`indicatorTrailStiffness`.
+  `SegmentIndicatorPainter` takes a corner `radius`.
+- Example: the bottom bar uses `SegmentTabs` and `FlyingIcon` (its own tab
+  widget is gone).
+
 ## 0.4.0 – 2026-10-21
 
 - Edge light: `GooeyStyle(light: GooeyLight(...))` draws an edge with a

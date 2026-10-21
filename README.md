@@ -22,7 +22,8 @@ fluid_motion/
 ├─ packages/fluid_motion/   the package
 │  ├─ lib/src/foundation/   EnergySpring, SpringMotion, rubberBand, Ramp, directionalStretch
 │  ├─ lib/src/drag/         DragSpringController + MorphFollower
-│  ├─ lib/src/widgets/      PressScale/PressSpring, MotionTransform, SegmentSpring
+│  ├─ lib/src/widgets/      PressScale/PressSpring, MotionTransform, SegmentSpring,
+│  │                        SegmentTabs, FlyingIcon
 │  ├─ lib/src/gooey/        GooeyScene, geometries, stage/backdrop/surface/content,
 │  │                        GooeyShader (GPU) + CPU fallback, field, contour, contact
 │  ├─ lib/src/quality/      MotionQuality – automatic quality
@@ -56,7 +57,7 @@ dependencies:
     git:
       url: https://github.com/efranka/fluid_motion.git
       path: packages/fluid_motion
-      ref: v0.4.0   # a tag, so your app does not change under you
+      ref: v0.5.0   # a tag, so your app does not change under you
 ```
 
 Then load the shader once at startup. If it fails, the CPU version is used
@@ -82,7 +83,8 @@ Future<void> main() async {
 | Slow in/out, follow through | `EnergySpring` | Bounce graded by speed |
 | Direct manipulation | `DragSpringController` | Two-state elements driven by scroll or drag. The spring takes over with the finger's exact velocity |
 | Overlapping/secondary action | `MorphFollower` | Elements that follow with their own spring and delay |
-| Squash & stretch | `directionalStretch`, `SegmentSpring` | Stretch along the motion, a stretchy tab indicator |
+| Squash & stretch | `directionalStretch`, `SegmentSpring`, `SegmentTabs` | Stretch along the motion; tabs with a stretchy indicator |
+| Secondary action, arcs | `FlyingIcon` | An icon flies along an arc from one spot to another (e.g. from its tab into a button) |
 | Anticipation/feedback | `PressScale`, `PressSpring` | Press feedback, also shared by several layers |
 | Arcs, timing | `MotionTransform` | Transform at paint time, with no rebuild and no layout |
 | Fluid material | `GooeyScene` and friends | Neck, colour blend, blobs and dissolving content |
@@ -141,6 +143,52 @@ Each effect can be switched off on its own with
 `GooeyStyle(neck:, colorBlend:, blob:, contentBlend:, useShader:)`.
 `GooeyStyle.off` switches them all off. With "Reduce motion" the stage does
 that by itself (see below).
+
+### Tabs and a flying icon
+
+`SegmentTabs` is a row of tabs with a stretchy indicator behind the selected
+one (a stiff leading edge, a soft trailing edge – it stretches like a droplet
+and contracts again). `FlyingIcon` flies a widget from one spot to another
+along an arc, at paint time – e.g. the selected tab's icon into a button
+when a bar folds up.
+
+```dart
+final iconSpot = GlobalKey();
+const icons = [Icons.view_timeline_outlined, Icons.view_list_outlined];
+
+Stack(children: [
+  Positioned.fill(
+    child: SegmentTabs(
+      tabs: [
+        SegmentTab(label: 'Timeline', icon: Icon(icons[0])),
+        SegmentTab(label: 'List', icon: Icon(icons[1])),
+      ],
+      selected: selected,
+      onSelected: (i) => setState(() => selected = i),
+      labelStyle: textTheme.labelLarge!.copyWith(color: cs.onPrimaryContainer),
+      indicatorColor: cs.onPrimaryContainer.withValues(alpha: 0.12),
+      selectedIconKey: iconSpot,        // leave the selected icon to the flight
+    ),
+  ),
+  Positioned.fill(
+    child: FlyingIcon(
+      progress: fold,                   // 0 = on its tab, 1 = in the button
+      from: FlightPoint.anchor(iconSpot),
+      to: FlightPoint.at((size) => size.center(Offset.zero)),
+      child: Icon(icons[selected], color: cs.onPrimaryContainer),
+    ),
+  ),
+]);
+```
+
+Colours, the indicator's shape (`indicatorRadius`, null = a pill), insets,
+icon size and padding are parameters. Each tab is a button for screen
+readers (label, selected), takes keyboard focus with a visible ring and is
+activated with Enter or Space, and is at least 48 × 48. The label never
+shrinks with large text: it wraps up to `labelMaxLines` and is then cut off
+with an ellipsis. A tab squeezed narrower than its icon (a bar folding into
+a button) is clipped, not shrunk. The flying icon gets no touches and no
+semantics – label the tab or the button.
 
 ### Edge light
 
@@ -218,7 +266,9 @@ Elements then show the state change itself, without bounce, stretch or blobs.
 | `PressScale` | Does not squeeze | Yes |
 | `GooeyStage` / `GooeyScene` | Neck, colour blend, blobs and content blend off; the shapes are still drawn | Yes, through the stage (`GooeyScene.reduceMotion`) |
 | `DragSpringController` | Still follows the finger and glides into place, but never bounces; followers move with it instead of lagging behind; `onOvershoot` never fires | Set `reduceMotion` (it has no context) |
-| `SegmentSpring` | Set `stretchy = false`: the indicator jumps | Set it yourself |
+| `SegmentTabs` | The indicator jumps, without stretching | Yes |
+| `FlyingIcon` | Does not fly: at the start until halfway, then at the end | Yes |
+| `SegmentSpring` | Set `stretchy = false`: the indicator jumps | Set it yourself (`SegmentTabs` does) |
 
 ```dart
 @override

@@ -27,7 +27,8 @@ and `docs/STATUS.md` for what is open and what has already been tried.
 packages/fluid_motion/   the package (version in pubspec.yaml, CHANGELOG.md)
   lib/src/foundation/    EnergySpring, SpringMotion, rubberBand, Ramp, stretch
   lib/src/drag/          DragSpringController, MorphFollower, ScrollMorphBehavior
-  lib/src/widgets/       PressScale/PressSpring, MotionTransform, SegmentSpring
+  lib/src/widgets/       PressScale/PressSpring, MotionTransform, SegmentSpring,
+                         SegmentTabs, FlyingIcon
   lib/src/gooey/         GooeyScene and everything gooey (see ARCHITECTURE)
   lib/src/quality/       MotionQuality (automatic quality)
   lib/src/tokens.dart    MotionTokens + MotionScope

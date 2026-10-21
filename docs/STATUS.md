@@ -1,17 +1,24 @@
 # Status
 
-Where things stand (version 0.4.0, October 2026). Update this file when
+Where things stand (version 0.5.0, October 2026). Update this file when
 something here changes.
 
 ## Ready
 
 - Used from an app as a git dependency pinned to a tag (see README).
-- Analyzer clean, 67 tests in the package and 6 in the example.
+- Analyzer clean, 79 tests in the package and 8 in the example.
 - "Reduce motion": `PressScale` and `GooeyStage` follow it by themselves;
   `DragSpringController` and `SegmentSpring` take it as a property (no
   context). See the README section.
 - Edge light along the merged shape (`GooeyLight`, 0.4.0): Safari on an
   iPhone showed no measurable cost (L1 below).
+- Tabs and a flying icon (`SegmentTabs`, `FlyingIcon`, 0.5.0), from the
+  example's bottom bar, asked by the events app (its `S24-54e`). Fixed on
+  the way: the example's tabs could not take keyboard focus (now a focus
+  ring and Enter/Space, checked in Chrome too), and their labels shrank
+  with large text (`FittedBox`; now wrap/ellipsis, WCAG 1.4.4). Kept:
+  screen-reader buttons with selected state, 48 dp. Not measured on the
+  iPhone – the drawing is the same as the example's before.
 - Measured on an iPhone 11: native iOS about 4.4 ms per frame with the GPU;
   web in Safari runs smoothly after the first fold (see the known issue).
 

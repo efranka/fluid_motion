@@ -45,6 +45,22 @@ everything listening to the style lives below the stage). Controllers have no
 context; `DragSpringController.reduceMotion` makes every spring critically
 damped, drops follower delays and `onOvershoot`.
 
+**`SegmentTabs`** (`widgets/segment_tabs.dart`) owns its `SegmentSpring`
+and moves it in `didUpdateWidget` when `selected` changes; springs from
+`MotionTokens`, `stretchy` off with "Reduce motion". Each tab is
+`FocusableActionDetector` (Enter, numpad Enter, Space → `ActivateIntent`)
+around one `Semantics` node, so focus and button state merge. Its content
+is laid out at least as wide as padding + icon (`_AtLeastWide`) and clipped,
+so a tab squeezed by a folding bar neither overflows nor shrinks the text.
+
+**`FlyingIcon`** (`widgets/flying_icon.dart`) – `RenderFlyingIcon` fills its
+parent, lays the child out loosely and places it with a paint-time transform:
+`lerp(from, to, t) + arc · sin(π t)`. `FlightPoint.anchor(key)` is resolved
+at paint time with `localToGlobal`/`globalToLocal`, so paint-time transforms
+above the anchor (a slide, a press) are followed; pass the animation that
+moves them as `repaint`. `applyPaintTransform` makes `getCenter` and
+`localToGlobal` on the child correct.
+
 **`MotionTransform`** – applies a `Matrix4` at paint time from a `Listenable`
 (and implements `applyPaintTransform`, so hit testing and `localToGlobal`
 stay correct). No rebuild or layout per frame.

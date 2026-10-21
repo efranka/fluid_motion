@@ -6,7 +6,7 @@ description: >-
   quality.
 homepage: https://github.com/efranka/fluid_motion
 repository: https://github.com/efranka/fluid_motion
-version: 0.4.0
+version: 0.5.0
 publish_to: none
 
 environment:
