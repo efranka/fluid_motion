@@ -55,5 +55,7 @@ export 'src/quality/motion_quality.dart';
 export 'src/tokens.dart';
 export 'src/warm_up.dart';
 export 'src/widgets/motion_transform.dart';
+export 'src/widgets/flying_icon.dart';
 export 'src/widgets/press.dart';
 export 'src/widgets/segment.dart';
+export 'src/widgets/segment_tabs.dart';

@@ -50,6 +50,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the tabs select on tap; the flying icon lands in the bubble',
+      (tester) async {
+    await tester.pumpWidget(_app(const ProgramScreen()));
+    await tester.pump();
+    await tester.tap(find.text('Timeline'));
+    await tester.pumpAndSettle();
+    final tabs = tester.widget<SegmentTabs>(find.byType(SegmentTabs));
+    expect(tabs.selected, 0);
+
+    // Folded: the flying icon sits in the bubble's centre.
+    await tester.fling(find.byType(ListView), const Offset(0, -400), 2000);
+    await tester.pumpAndSettle();
+    final icon = find.descendant(
+      of: find.byType(FlyingIcon),
+      matching: find.byIcon(Icons.view_timeline_outlined),
+    );
+    final bubble = tester.getRect(find.byType(SegmentTabs));
+    expect((tester.getCenter(icon) - bubble.center).distance, lessThan(1.5));
+  });
+
+  testWidgets('200 % text: the bar folds and unfolds without errors',
+      (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(_app(const ProgramScreen()));
+    await tester.pump();
+    expect(
+      MediaQuery.textScalerOf(tester.element(find.text('Timeline'))).scale(10),
+      20,
+    );
+    await tester.fling(find.byType(ListView), const Offset(0, -400), 2000);
+    await tester.pumpAndSettle();
+    await tester.fling(find.byType(ListView), const Offset(0, 2000), 3000);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(FittedBox), findsNothing);
+  });
+
   testWidgets('shapes can be dragged into each other and spring home',
       (tester) async {
     await tester.pumpWidget(_app(const ShapesScreen()));

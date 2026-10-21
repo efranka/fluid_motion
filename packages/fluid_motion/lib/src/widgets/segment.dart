@@ -14,7 +14,11 @@ class SegmentSpring {
     required TickerProvider vsync,
     required int index,
     this.stretchy = true,
+    SpringDescription? lead,
+    SpringDescription? trail,
   })  : _index = index,
+        lead = lead ?? _defaultLead,
+        trail = trail ?? _defaultTrail,
         _left = AnimationController.unbounded(
           vsync: vsync,
           value: index.toDouble(),
@@ -30,9 +34,12 @@ class SegmentSpring {
   /// false = the indicator jumps directly (e.g. for "Reduce motion").
   bool stretchy;
 
-  static final _lead =
+  /// The leading edge's spring (stiff) and the trailing edge's (soft).
+  SpringDescription lead, trail;
+
+  static final _defaultLead =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 700, ratio: 0.7);
-  static final _trail =
+  static final _defaultTrail =
       SpringDescription.withDampingRatio(mass: 1, stiffness: 240, ratio: 0.8);
 
   late final Listenable listenable = Listenable.merge([_left, _right]);
@@ -52,8 +59,8 @@ class SegmentSpring {
       _right.value = r;
       return;
     }
-    _left.springTo(l, forward ? _trail : _lead, velocity: _left.velocity);
-    _right.springTo(r, forward ? _lead : _trail, velocity: _right.velocity);
+    _left.springTo(l, forward ? trail : lead, velocity: _left.velocity);
+    _right.springTo(r, forward ? lead : trail, velocity: _right.velocity);
   }
 
   void dispose() {
@@ -62,20 +69,25 @@ class SegmentSpring {
   }
 }
 
-/// Paints a [SegmentSpring] as a pill. When stretched it gets slightly
-/// lower (squash & stretch). Repaints without rebuilding.
+/// Paints a [SegmentSpring] as a pill (or a rounded rect with [radius]).
+/// When stretched it gets slightly lower (squash & stretch). Repaints
+/// without rebuilding.
 class SegmentIndicatorPainter extends CustomPainter {
   SegmentIndicatorPainter({
     required this.segments,
     required this.count,
     required this.color,
     this.inset = 4,
+    this.radius,
   }) : super(repaint: segments.listenable);
 
   final SegmentSpring segments;
   final int count;
   final Color color;
   final double inset;
+
+  /// Corner radius; null = a pill (half the height).
+  final double? radius;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -94,7 +106,7 @@ class SegmentIndicatorPainter extends CustomPainter {
         cy - height / 2,
         x0 + width,
         cy + height / 2,
-        Radius.circular(height / 2),
+        Radius.circular(radius ?? height / 2),
       ),
       Paint()..color = color,
     );
@@ -105,5 +117,6 @@ class SegmentIndicatorPainter extends CustomPainter {
       old.segments != segments ||
       old.count != count ||
       old.color != color ||
-      old.inset != inset;
+      old.inset != inset ||
+      old.radius != radius;
 }

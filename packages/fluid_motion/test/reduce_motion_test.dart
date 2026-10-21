@@ -125,6 +125,38 @@ void main() {
     });
   });
 
+  group('SegmentTabs', () {
+    testWidgets('the indicator jumps, without stretching', (tester) async {
+      var selected = 0;
+      late StateSetter update;
+      await tester.pumpWidget(MotionScope(
+        reduceMotion: true,
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: StatefulBuilder(builder: (context, set) {
+            update = set;
+            return SegmentTabs(
+              tabs: const [SegmentTab(label: 'A'), SegmentTab(label: 'B')],
+              selected: selected,
+              onSelected: (_) {},
+              labelStyle: const TextStyle(fontSize: 14),
+              indicatorColor: const Color(0x22000000),
+            );
+          }),
+        ),
+      ));
+      update(() => selected = 1);
+      await tester.pump();
+      final painter = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((w) => w.painter)
+          .whereType<SegmentIndicatorPainter>()
+          .first;
+      expect(painter.segments.left, 1);
+      expect(painter.segments.right, 2);
+    });
+  });
+
   group('DragSpringController with "Reduce motion"', () {
     testWidgets('followers move at once, and nothing overshoots',
         (tester) async {

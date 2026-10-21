@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
@@ -43,8 +42,6 @@ class _ProgramScreenState extends State<ProgramScreen>
     (Icons.view_timeline_outlined, 'Timeline'),
     (Icons.view_list_outlined, 'List'),
   ];
-  // Which way each tab's content slides (towards the bubble's centre).
-  static const _slideSigns = [1.0, -1.0];
   int _selectedView = 1;
 
   // --- Motion ---
@@ -81,15 +78,14 @@ class _ProgramScreenState extends State<ProgramScreen>
   // layers).
   late final PressSpring _bubblePress = PressSpring(vsync: this);
 
-  late final SegmentSpring _pill =
-      SegmentSpring(vsync: this, index: _selectedView);
+  // Marks where the selected tab's icon sits, for the flying icon.
+  final _selectedIconKey = GlobalKey();
 
   // Created once (not in build), so listeners are not swapped on rebuild.
   late final Listenable _navLayerMotion =
       Listenable.merge([_nav, _impact, _morph.lean]);
   late final Listenable _bubbleLayerMotion =
       Listenable.merge([_toggle, _morph.lean]);
-  late final Listenable _iconMotion = Listenable.merge([_icon, _toggle]);
 
   // Automatic quality: switches expensive effects off if the device cannot
   // keep up (old phone, low battery, Low Power Mode), and back on.
@@ -112,7 +108,6 @@ class _ProgramScreenState extends State<ProgramScreen>
   late final Animation<Offset> _labelSlideRight = _toggle
       .drive(const Ramp(0.0, 0.5))
       .drive(Tween(begin: Offset.zero, end: const Offset(-_labelSlide, 0)));
-  static const _noSlide = AlwaysStoppedAnimation(Offset.zero);
 
   // --- State ---
   BottomBarMotion _f = kBottomBarMotion;
@@ -175,7 +170,6 @@ class _ProgramScreenState extends State<ProgramScreen>
     _iconFollower
       ..spring = _f.iconSpring ? tokens.secondary : tokens.primary
       ..idleVelocityScale = _f.iconSpring ? 0 : 1;
-    _pill.stretchy = _f.stretchyPill;
 
     final cs = _cs!;
     _scene
@@ -242,7 +236,6 @@ class _ProgramScreenState extends State<ProgramScreen>
     }
     if (i == _selectedView) return;
     setState(() => _selectedView = i);
-    _pill.moveTo(i);
   }
 
   // -------------------------------------------------------------------------
@@ -295,25 +288,6 @@ class _ProgramScreenState extends State<ProgramScreen>
     return (nav, bubble);
   }
 
-  /// Where the selected tab's icon sits on its own tab (x in the bubble and
-  /// FittedBox scale). The icon stays put when switching tabs – only the
-  /// pill behind it moves – and only travels when the bar folds.
-  (double, double) _tabIconOnTab(double bubbleWidth, List<double> rowWidths) {
-    final tab = bubbleWidth / _views.length;
-    final i = _selectedView;
-    final rowWidth = rowWidths[i];
-    final fit = math.min(1.0, tab / rowWidth);
-    final slide = _f.labelSlide
-        ? _labelSlide *
-            tab *
-            const Ramp(0.0, 0.5).transform(_toggle.value) *
-            _slideSigns[i]
-        : 0.0;
-    final x =
-        tab * (i + 0.5) + slide + fit * (-rowWidth / 2 + kTabIconSize / 2);
-    return (x, fit);
-  }
-
   Widget _laggingNavItem(int index, Widget item) {
     if (!_f.navItemLag) return item;
     const shrink = _fab + _gap;
@@ -342,7 +316,6 @@ class _ProgramScreenState extends State<ProgramScreen>
     _icon.dispose();
     _impact.dispose();
     _bubblePress.dispose();
-    _pill.dispose();
     super.dispose();
   }
 
@@ -358,23 +331,6 @@ class _ProgramScreenState extends State<ProgramScreen>
     final onToggle = cs.onPrimaryContainer;
     final labelStyle =
         Theme.of(context).textTheme.labelLarge!.copyWith(color: onToggle);
-
-    // Each tab's content width (icon + gap + text), measured once.
-    final textScaler = MediaQuery.textScalerOf(context);
-    final rowWidths = <double>[
-      for (final (_, label) in _views)
-        () {
-          final painter = TextPainter(
-            text: TextSpan(text: label, style: labelStyle),
-            textDirection: TextDirection.ltr,
-            textScaler: textScaler,
-            maxLines: 1,
-          )..layout();
-          final width = kTabIconSize + kTabIconGap + painter.width;
-          painter.dispose();
-          return width;
-        }(),
-    ];
 
     // The shape's background: a plain DecoratedBox, or a GooeySurface that
     // can blend colour and "blob".
@@ -411,92 +367,53 @@ class _ProgramScreenState extends State<ProgramScreen>
       ],
     );
 
-    Widget toggleContent(double fullWidth, double maxWidth) => Semantics(
+    Widget toggleContent() => Semantics(
           container: true,
           label: 'View',
           child: Stack(
             children: [
-              // Pill + tabs, fading out as the bubble folds.
+              // The tabs with their stretchy pill, fading out as the bubble
+              // folds.
               Positioned.fill(
                 child: FadeTransition(
                   opacity: _labelsOpacity,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: SegmentIndicatorPainter(
-                            segments: _pill,
-                            count: _views.length,
-                            color: onToggle.withValues(alpha: 0.12),
-                          ),
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: Row(
-                          children: [
-                            for (final (i, (icon, label)) in _views.indexed)
-                              ToggleLabel(
-                                icon: icon,
-                                label: label,
-                                style: labelStyle,
-                                selected: i == _selectedView,
-                                slide: !_f.labelSlide
-                                    ? _noSlide
-                                    : (i == 0
-                                        ? _labelSlideLeft
-                                        : _labelSlideRight),
-                                onTap: () => _selectView(i),
-                              ),
-                          ],
-                        ),
-                      ),
+                  child: SegmentTabs(
+                    tabs: [
+                      for (final (icon, label) in _views)
+                        SegmentTab(label: label, icon: Icon(icon)),
                     ],
+                    selected: _selectedView,
+                    onSelected: _selectView,
+                    labelStyle: labelStyle,
+                    indicatorColor: onToggle.withValues(alpha: 0.12),
+                    iconSize: kTabIconSize,
+                    iconGap: kTabIconGap,
+                    stretchy: _f.stretchyPill,
+                    slides: _f.labelSlide
+                        ? [_labelSlideLeft, _labelSlideRight]
+                        : null,
+                    selectedIconKey: _selectedIconKey,
                   ),
                 ),
               ),
 
               // The flying icon: the selected tab's icon, drawn in one place
-              // all the way from its tab to the bubble's centre. Moved and
-              // scaled at paint time: no rebuild and no new layout per frame.
+              // all the way from its tab to the bubble's centre, at paint
+              // time.
               Positioned.fill(
-                child: IgnorePointer(
-                  child: MotionTransform(
-                    animation: _iconMotion,
-                    alignment: Alignment.topLeft,
-                    transform: (_) {
-                      final p = _icon.value;
-                      final pc = p.clamp(0.0, 1.0);
-                      final w = _toggleWidth(fullWidth, maxWidth);
-                      final (fromX, fit) = _tabIconOnTab(w, rowWidths);
-                      final x = lerpDouble(fromX, w / 2, p)!;
-                      final size =
-                          lerpDouble(kTabIconSize * fit, kTabIconSize, pc)!;
-                      final hop =
-                          _f.iconHop ? _iconHop * math.sin(math.pi * pc) : 0.0;
-                      return Matrix4.translationValues(
-                        x - size / 2,
-                        _barHeight / 2 - size / 2 - hop,
-                        0,
-                      )..multiply(Matrix4.diagonal3Values(
-                          size / kTabIconSize,
-                          size / kTabIconSize,
-                          1,
-                        ));
-                    },
-                    child: Align(
-                      alignment: Alignment.topLeft,
-                      child: SizedBox.square(
-                        dimension: kTabIconSize,
-                        child: GooeyContent(
-                          scene: _scene,
-                          index: 1,
-                          child: Icon(
-                            _views[_selectedView].$1,
-                            size: kTabIconSize,
-                            color: onToggle,
-                          ),
-                        ),
-                      ),
+                child: FlyingIcon(
+                  progress: _icon,
+                  repaint: _toggle,
+                  from: FlightPoint.anchor(_selectedIconKey),
+                  to: FlightPoint.at((size) => size.center(Offset.zero)),
+                  arc: _f.iconHop ? const Offset(0, -_iconHop) : Offset.zero,
+                  child: GooeyContent(
+                    scene: _scene,
+                    index: 1,
+                    child: Icon(
+                      _views[_selectedView].$1,
+                      size: kTabIconSize,
+                      color: onToggle,
                     ),
                   ),
                 ),
@@ -695,7 +612,7 @@ class _ProgramScreenState extends State<ProgramScreen>
                     PressScale(
                       spring: _bubblePress,
                       enabled: _f.pressFeedback,
-                      child: toggleContent(fullWidth, box.maxWidth),
+                      child: toggleContent(),
                     ),
                   ),
               ],
