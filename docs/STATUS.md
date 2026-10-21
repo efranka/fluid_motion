@@ -20,8 +20,8 @@ something here changes.
 | P1 | One shared frame-time measurer instead of one callback per `MotionQuality` | Persistent frame callbacks cannot be removed, only muted |
 | R1 | Test native Android on a real phone, GPU and CPU | Only iOS and web tested |
 | Docs | GIF or video at the top of the README | |
-| L1 | Edge light along the merged shape: measure on an iPhone 11 | Prototype on branch `prototype/edge-light`, see below |
-| L2 | Cheaper shadow | Only if L1 shows the shadow is too heavy |
+| L1 | Edge light along the merged shape: measure on an iPhone 11 | Measured in Safari 2026-10-21: no measurable difference (see §6). Open: native, and a charged phone |
+| L2 | Cheaper shadow | Not needed by L1 – only if a later measurement shows the shadow |
 | L3 | `MotionQuality` drops the shadow first, then the edge light | |
 | L4 | Edge light on the CPU fallback | Today the CPU path draws the shapes without it |
 | L5 | `MotionWarmUp` draws the shadow mode and a lit surface | Same program, so probably not needed – check the Safari first fold |
@@ -42,8 +42,8 @@ paint the same surface. When the shapes flow together, the edge must follow
 the merged shape. Only its numbers are used here; nothing else from the app.
 
 Prototype on branch `prototype/edge-light` (GPU only, not released).
-Measured: likeness against plain Flutter (below). iPhone cost **not
-measured yet** (L1).
+Measured: likeness against plain Flutter (below), and Erik's iPhone in
+Safari (§6): no measurable cost.
 
 ![Along the merged shape, dark and light, at four gaps](images/edge_light.png)
 
@@ -60,9 +60,10 @@ measured yet** (L1).
 3. **It looks like the plain Flutter version while the shapes are apart**:
    mean difference 0.4 (dark) and 0.9 (light) of 255 per channel. The
    example's "rim light" recipe uses the events app's numbers.
-4. **Cost, estimated**: edge, glow and gradient ≈ 1.4× today's gooey pixel
-   work; with a soft shadow ≈ 3×, two shadows 4–5×. Must be measured on an
-   iPhone 11 (L1).
+4. **Cost**: estimated edge, glow and gradient ≈ 1.4× today's gooey pixel
+   work, with a soft shadow ≈ 3×. Measured on Erik's iPhone in Safari: no
+   difference between off, edge light, and edge light + shadow (§6) – but
+   the bar was not smooth in any of the three runs.
 5. **Limits**: GPU only; the edge lies under the shape's content; one
    shadow pass merges at most four shapes.
 
@@ -155,12 +156,37 @@ hitch (Known issues). If the shadow is too heavy (L2): Flutter's own
 `BoxShadow` per shape while apart, the shader's shadow only while connected,
 and several shadows in one pass.
 
-**6. To measure (L1)** – on the branch, iPhone 11 charged and cool, the
-Bottom bar demo, panel: Automatic quality off, Reset, fold and unfold five
-times, note `build + raster`, `90 %` and `heaviest frame`. Three runs: both
-prototype toggles off; "Edge light" on; both on. Safari (web) and native.
+**6. Measured (L1)** – Erik's iPhone (828 px wide screenshots: an iPhone 11
+or XR), Safari, 2026-10-21 14:58–15:01, battery 40 %. The example built
+from `c465e94`, Bottom bar demo, panel: Automatic quality off, Reset, fold
+and unfold five times. One run each. Native not measured.
 
-**7. For Erik**
+| Run | build + raster | 90 % | over 16 ms | fps | jank | worst gap | heaviest frame |
+|---|---|---|---|---|---|---|---|
+| 1. Both toggles off | 8.6 + 11.0 ms | 30.0 ms | 52 % | 42 | 50 % | 212 ms | 202 ms (build 10 + raster 192) |
+| 2. Edge light | 8.0 + 10.8 ms | 27.0 ms | 59 % | 41 | 61 % | 207 ms | 202 ms (10 + 192) |
+| 3. Edge light + shadow | 7.7 + 11.0 ms | 26.0 ms | 56 % | 40 | 61 % | 210 ms | 205 ms (13 + 192) |
+
+What it says:
+
+1. **No measurable cost from the edge light or the shadow.** Raster stays
+   at about 11 ms and fps at 40–42 in all three. On the web the GPU's time
+   does not show in "raster", so fps and jank are the numbers that count:
+   fps falls by 1–2 and jank rises from 50 to 61 %, within what one run per
+   setting can tell apart.
+2. **The bar itself was not smooth** – 40–42 fps and half the frames over
+   16 ms with everything off. Earlier measurements (Ready, above) had
+   Safari smooth after the first fold. A phone at 40 % that is not cool, or
+   one run per setting, may explain it; so the question "is it smooth?" is
+   not answered by this, only "does the light make it worse?" (no).
+3. **The 192 ms raster frame is the same in all three** – it looks like the
+   Safari first-fold hitch (Known issues), not the light. It appears in
+   every run, so the page was probably reloaded between runs.
+4. **Still open:** native, and a charged, cool phone with a few runs per
+   setting, before the light goes into a release.
+
+**7. For Erik** (recommendations after L1 in the message to Projektleder,
+2026-10-21)
 
 1. Gooey **and** rim light on the same bar is now possible. Look at the
    Edge light demo (slide the gap) before deciding.
