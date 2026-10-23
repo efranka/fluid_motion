@@ -140,11 +140,8 @@ abstract final class GooeyShader {
     w.color(b.color);
     w.color(b.color);
     w.vec4(0, 0, 0, 0);
-    _shape(w, a, 0);
-    _shape(w, b, 1);
-    _shape(w, null, 2);
-    _shape(w, null, 3);
     _light(w, light, const [], pixelRatio);
+    _shapes(w, [a, b]);
     canvas.drawRect(g.region, Paint()..shader = shader);
   }
 
@@ -191,12 +188,9 @@ abstract final class GooeyShader {
       w.color(other(i)?.color ?? shape.color);
     }
     w.vec4(width(0), width(1), width(2), 0);
-    _shape(w, shape, 0);
-    for (var i = 0; i < maxNeighbours; i++) {
-      _shape(w, other(i), i + 1);
-    }
     _light(w, light, [for (var i = 0; i < n && i < necks.length; i++) necks[i]],
         pixelRatio);
+    _shapes(w, [shape, for (var i = 0; i < n; i++) others[i]]);
     final area = shape.rect.inflate(shape.maxBulge + 2).shift(-origin);
     canvas.drawRect(area, Paint()..shader = shader);
   }
@@ -227,27 +221,24 @@ abstract final class GooeyShader {
       w.color(shadow.color);
     }
     w.vec4(0, 0, 0, 0);
-    var bounds = shapes.first.rect.inflate(shapes.first.maxBulge);
-    for (var i = 0; i < 4; i++) {
-      final s = i < n ? shapes[i] : null;
-      _shape(w, s, i);
-      if (s != null) {
-        bounds = bounds.expandToInclude(s.rect.inflate(s.maxBulge));
-      }
-    }
     // Edge light (unused here), then the shadow itself.
     w.zeros(4 * 16);
     w.color(shadow.color);
     w.vec4(sigma, shadow.spreadRadius, shadow.offset.dx, shadow.offset.dy);
+    _shapes(w, shapes.sublist(0, n));
+    var bounds = shapes.first.rect.inflate(shapes.first.maxBulge);
+    for (final s in shapes.take(n)) {
+      bounds = bounds.expandToInclude(s.rect.inflate(s.maxBulge));
+    }
     final area = bounds
         .shift(shadow.offset)
         .inflate(3 * sigma + shadow.spreadRadius.abs() + 1);
     canvas.drawRect(area, Paint()..shader = shader);
   }
 
-  /// Writes the edge-light uniforms (after the four shapes): the necks
-  /// towards B, C and D, their k, the edge, glow and fill colours. The
-  /// shadow uniforms are left empty (see [paintShadow]).
+  /// Writes the edge-light uniforms (before the shapes): the necks towards
+  /// B, C and D, their k, the edge, glow and fill colours. The shadow
+  /// uniforms are left empty (see [paintShadow]).
   static void _light(
     _UniformWriter w,
     GooeyLight? light,
@@ -295,16 +286,28 @@ abstract final class GooeyShader {
     w.zeros(4 * 2);
   }
 
-  /// Writes one shape's uniforms: rect, kind, three ripples, 24 vertices –
-  /// and binds its texture (or the empty one) to sampler [slot].
-  static void _shape(_UniformWriter w, GooeyShape? s, int slot) {
+  /// Writes the four shape slots A–D ([shapes], then empty ones): first
+  /// each shape's rect, kind and three ripples, then each shape's 24
+  /// vertices – the big arrays last, see `shaders/gooey.frag` – and binds
+  /// each shape's texture (or the empty one) to its sampler.
+  static void _shapes(_UniformWriter w, List<GooeyShape> shapes) {
+    assert(shapes.length <= 4, 'at most four shapes');
+    GooeyShape? at(int i) => i < shapes.length ? shapes[i] : null;
+    for (var i = 0; i < 4; i++) {
+      _shapeHead(w, at(i));
+    }
+    for (var i = 0; i < 4; i++) {
+      _shapeVertices(w, at(i), i);
+    }
+  }
+
+  /// One shape's rect, kind and three strongest ripples.
+  static void _shapeHead(_UniformWriter w, GooeyShape? s) {
     final g = s?.sdf.gpu;
-    ui.Image texture = _empty!;
     if (s == null || g == null) {
       w.vec4(0, 0, 0, 0);
       w.vec4(-1, 0, 0, 0);
-      w.zeros(12 + 2 * GooeyGpuShape.maxVertices);
-      w.shader.setImageSampler(slot, texture);
+      w.zeros(12);
       return;
     }
     final r = s.rect;
@@ -313,7 +316,6 @@ abstract final class GooeyShader {
     w.vec4(g.type.toDouble(), g.p1, g.p2,
         verts == null ? 0 : (verts.length ~/ 2).toDouble());
 
-    // The three strongest ripples.
     final ripples = [...s.ripples]
       ..sort((x, y) => y.amplitude.abs().compareTo(x.amplitude.abs()));
     for (var i = 0; i < 3; i++) {
@@ -325,10 +327,16 @@ abstract final class GooeyShader {
         w.vec4(0, 0, 0, 0);
       }
     }
+  }
 
-    // Vertices – or, for a field, its mapping into the texture.
+  /// One shape's vertices – or, for a field, its mapping into the texture,
+  /// which is bound to sampler [slot] (otherwise the empty texture is).
+  static void _shapeVertices(_UniformWriter w, GooeyShape? s, int slot) {
+    final g = s?.sdf.gpu;
+    ui.Image texture = _empty!;
     var written = 0;
-    final f = g.field;
+    final f = g?.field;
+    final verts = g?.vertices;
     if (f != null) {
       texture = _textureFor(f) ?? _empty!;
       w

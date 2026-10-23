@@ -102,7 +102,8 @@ class GooeyStyle {
   final int blendNeighbours;
 
   /// Edge light along the merged outline (edge, glow, shadow), or null for
-  /// none. Not motion, so "Reduce motion" keeps it.
+  /// none. It is the shapes' look, not motion: neither "Reduce motion" nor
+  /// [MotionQuality] switches it off.
   final GooeyLight? light;
 
   double get meetAt => neckStyle.meetAt;
@@ -314,6 +315,7 @@ class GooeyScene {
   // -------------------------------------------------------------------------
 
   List<GooeyShape>? _shapes;
+  List<int> _shapeMembers = const [];
   GooeyColorField? _field;
   Duration? _cacheFrame;
   int _generation = 0, _cacheGeneration = -1;
@@ -335,14 +337,19 @@ class GooeyScene {
       _cacheGeneration == _generation &&
       _cacheFrame == SchedulerBinding.instance.currentSystemFrameTimeStamp;
 
-  List<Rect>? _rects() {
+  /// The rect of every member that has one this frame (in member order),
+  /// and which member each belongs to. A member without a rect (not laid
+  /// out yet, or not shown) is left out; the others still merge and light.
+  (List<Rect>, List<int>) _rects() {
     final rects = <Rect>[];
-    for (final m in _members) {
+    final members = <int>[];
+    for (final (i, m) in _members.indexed) {
       final r = m.rect();
-      if (r == null || r.isEmpty) return null;
+      if (r == null || r.isEmpty) continue;
       rects.add(r);
+      members.add(i);
     }
-    return rects;
+    return (rects, members);
   }
 
   GooeyShape _shapeFor(int i, Rect rect,
@@ -355,26 +362,46 @@ class GooeyScene {
         ripples: ripples,
       );
 
-  List<GooeyShape>? _buildShapes() {
-    final rects = _rects();
-    if (rects == null) return null;
-    return [
-      for (var i = 0; i < rects.length; i++)
-        _shapeFor(i, rects[i], ripples: _ripplesFor(i, rects[i])),
-    ];
+  (List<GooeyShape>?, List<int>) _buildShapes() {
+    final (rects, members) = _rects();
+    if (rects.isEmpty) return (null, const []);
+    return (
+      [
+        for (final (k, m) in members.indexed)
+          _shapeFor(m, rects[k], ripples: _ripplesFor(m, rects[k])),
+      ],
+      members,
+    );
   }
 
-  /// The shapes in the current frame (null if they are not ready).
-  List<GooeyShape>? get shapes {
-    if (_cacheable && _cacheValid) return _shapes;
-    final shapes = _buildShapes();
+  (List<GooeyShape>?, List<int>) _frame() {
+    if (_cacheable && _cacheValid) return (_shapes, _shapeMembers);
+    final frame = _buildShapes();
     if (_cacheable) {
-      _shapes = shapes;
+      _shapes = frame.$1;
+      _shapeMembers = frame.$2;
       _field = null;
       _cacheFrame = SchedulerBinding.instance.currentSystemFrameTimeStamp;
       _cacheGeneration = _generation;
     }
-    return shapes;
+    return frame;
+  }
+
+  /// The shapes in the current frame: one for each member that has a rect,
+  /// in member order (null if none has one yet). While every member has a
+  /// rect, shape i is member i; otherwise use [shapeIndexOf]. The indices of
+  /// [neckBetween] and [field] are indices into this list.
+  List<GooeyShape>? get shapes => _frame().$1;
+
+  /// Where member [member]'s shape is in [shapes] this frame – or null if
+  /// the member has no rect.
+  int? shapeIndexOf(int member) {
+    final (shapes, members) = _frame();
+    if (shapes == null) return null;
+    // Members are in order, and most often all there: try the same place.
+    if (member < members.length && members[member] == member) return member;
+    final k = members.indexOf(member);
+    return k < 0 ? null : k;
   }
 
   /// The shared colour field (null if colour blending is off).
@@ -402,14 +429,14 @@ class GooeyScene {
 
   void _onMotion() {
     if (!_style.blob) return;
-    final rects = _rects();
-    if (rects == null) return;
+    final (rects, members) = _rects();
     // Plain shapes (no ripples) – enough to measure the gaps.
     final plain = [
-      for (var i = 0; i < rects.length; i++) _shapeFor(i, rects[i]),
+      for (final (k, m) in members.indexed) _shapeFor(m, rects[k]),
     ];
-    for (var i = 0; i < rects.length; i++) {
-      for (var j = i + 1; j < rects.length; j++) {
+    for (var a = 0; a < members.length; a++) {
+      for (var b = a + 1; b < members.length; b++) {
+        final i = members[a], j = members[b];
         final tracker = _trackers.putIfAbsent(
           i * 1000 + j,
           () => ContactTracker(
@@ -417,12 +444,12 @@ class GooeyScene {
             hysteresis: _style.hysteresis,
           ),
         );
-        final (gap, p) = GooeyContact.measure(plain[i], plain[j]);
+        final (gap, p) = GooeyContact.measure(plain[a], plain[b]);
         final event = tracker.update(gap);
         if (event == ContactEvent.none) continue;
         final force = (tracker.speed / 300).clamp(0.35, 1.6);
-        for (final m in [i, j]) {
-          final c = _addBlob(m, rects[m], p);
+        for (final (k, m) in [(a, i), (b, j)]) {
+          final c = _addBlob(m, rects[k], p);
           if (event == ContactEvent.caught) {
             // Catch: the shapes bulge towards each other and wobble to rest.
             c.kick(_style.catchKick * force, _style.catchSpring);
@@ -513,17 +540,16 @@ class GooeyScene {
   (double, Offset) influenceOn(int member, Offset global) {
     if (!_style.contentBlend) return (0, Offset.zero);
     final s = shapes;
-    if (s == null || s.length < 2 || member >= s.length) {
-      return (0, Offset.zero);
-    }
+    final index = shapeIndexOf(member);
+    if (s == null || s.length < 2 || index == null) return (0, Offset.zero);
     final p = _globalToStage(global);
     if (p == null) return (0, Offset.zero);
 
-    final own = s[member];
+    final own = s[index];
     GooeyShape? other;
     var best = double.infinity;
     for (var j = 0; j < s.length; j++) {
-      if (j == member) continue;
+      if (j == index) continue;
       final d = s[j].distance(p.dx, p.dy);
       if (d < best) {
         best = d;
@@ -547,7 +573,8 @@ class GooeyScene {
     return (t, len > 1e-6 ? axis / len : Offset.zero);
   }
 
-  /// The neck between shape [i] and [j] in the current frame (or null).
+  /// The neck between shape [i] and [j] in the current frame (or null) –
+  /// indices into [shapes].
   GooeyNeckGeometry? neckBetween(int i, int j) {
     final s = shapes;
     if (s == null || i >= s.length || j >= s.length) return null;

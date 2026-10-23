@@ -1,12 +1,12 @@
 # Status
 
-Where things stand (version 0.5.0, October 2026). Update this file when
+Where things stand (version 0.5.1, October 2026). Update this file when
 something here changes.
 
 ## Ready
 
 - Used from an app as a git dependency pinned to a tag (see README).
-- Analyzer clean, 79 tests in the package and 8 in the example.
+- Analyzer clean, 90 tests in the package and 8 in the example.
 - "Reduce motion": `PressScale` and `GooeyStage` follow it by themselves;
   `DragSpringController` and `SegmentSpring` take it as a property (no
   context). See the README section.
@@ -19,6 +19,12 @@ something here changes.
   with large text (`FittedBox`; now wrap/ellipsis, WCAG 1.4.4). Kept:
   screen-reader buttons with selected state, 48 dp. Not measured on the
   iPhone – the drawing is the same as the example's before.
+- 0.5.1, asked by the events app (its `S24-54f`): the shader's uniforms
+  are reordered so the edge light and shadow no longer come after the
+  vertex arrays (on an iPhone 11 in Safari they came out as nothing – see
+  ARCHITECTURE, "Keep the vertex arrays last"; L7 below); a member without
+  a rect is left out instead of making the whole scene "not ready"; the
+  layer order (surfaces, then content) is in the README.
 - Measured on an iPhone 11: native iOS about 4.4 ms per frame with the GPU;
   web in Safari runs smoothly after the first fold (see the known issue).
 
@@ -30,9 +36,9 @@ something here changes.
 | R1 | Test native Android on a real phone, GPU and CPU | Only iOS and web tested |
 | Docs | GIF or video at the top of the README | |
 | L1 | Edge light: measure again before production – charged, cool phone, 2–3 runs per setting, native too | Safari 2026-10-21: no measurable difference (see §6). Erik: before production, not before the tag |
-| L3 | `MotionQuality` drops the shadow first, then the edge light | |
 | L4 | Edge light on the CPU fallback | Today the CPU path draws the shapes without it |
 | L5 | `MotionWarmUp` draws the shadow mode and a lit surface | Same program, so probably not needed – check the Safari first fold |
+| L7 | Edge light and shadow on the iPhone 11 (A13) in Safari: confirm 0.5.1 on the device | 0.5.0 drew the shapes there without light or shadow (the events app's light probe: 0; a newer iPhone SE: 62–78). 0.5.1 moves them before the vertex arrays – the likely cause, not yet confirmed on the phone. Done when the app's light probe says yes on Erik's iPhone 11 |
 | L6 | Edge over the content, as an option | Today the edge is part of `GooeySurface`'s background, so the shape's content covers it (see "Edge and content" below) |
 
 ## Edge light along the merged shape (investigation 2026-10-20, released in 0.4.0)
@@ -240,6 +246,12 @@ load, but this should be found and fixed before relying on it.
 - Flutter 3.41 and 3.47 measured the same; today's frame cost is not a
   regression from the upgrade.
 - wasm/skwasm: white screen in Safari; the web build stays on CanvasKit.
+- L3 ("`MotionQuality` drops the shadow, then the edge light") is dropped.
+  Erik's design rule (2026-10-22): *"lyset må aldrig falde, kun
+  bevægelsen"* – the light is the shapes' look, not motion. Neither
+  `MotionQuality` nor "Reduce motion" switches it off (tested). If a slow
+  device ever needs it, the answer is a cheaper light, not none; L1 showed
+  no measurable cost so far.
 - "Reduce motion" (A1, 0.3.0): the drag controller still glides (critically
   damped) instead of jumping, because the fold follows the user's own scroll
   or drag. Controllers without a context are not made automatic (no hidden

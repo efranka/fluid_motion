@@ -1,4 +1,5 @@
 import 'package:flutter/animation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluid_motion/fluid_motion.dart';
 
@@ -123,6 +124,34 @@ void main() {
 
     q.enabled = false;
     expect(scene.style.contentBlend, isTrue);
+  });
+
+  testWidgets('the edge light and shadow stay when every effect is off',
+      (tester) async {
+    final q = _quality();
+    final motion = AnimationController(vsync: const TestVSync());
+    const light = GooeyLight(shadows: [BoxShadow(blurRadius: 8)]);
+    final scene = GooeyScene(
+      vsync: const TestVSync(),
+      motion: motion,
+      quality: q,
+      style: const GooeyStyle(light: light),
+    );
+    addTearDown(() {
+      scene.dispose();
+      motion.dispose();
+      q.dispose();
+    });
+
+    // Low Power Mode: every motion effect off …
+    for (var i = 0; i < 60; i++) {
+      q.recordInterval(33.3);
+    }
+    q.applyPending();
+    expect(scene.style.neck, isFalse);
+    expect(scene.style.colorBlend, isFalse);
+    // … but the light is the shapes' look, not motion: it stays.
+    expect(scene.style.light, light);
   });
 
   test('impossible settings fail clearly during development', () {

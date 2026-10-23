@@ -1,3 +1,21 @@
+## 0.5.1 – 2026-10-23
+
+- Fix: the edge light and shadow came out as nothing on an iPhone 11 (A13)
+  in Safari, while the shapes were drawn. The shader's uniforms are
+  reordered: everything but the vertices comes first, and the vertices are
+  packed two per `vec4` and come last, so a rounded rect, circle or ring
+  reads only the first 46 vec4 slots (before: up to 138). The Dart side
+  writes the same 376 floats in the new order.
+- A `GooeyMember` whose `rect` returns null is left out; the other shapes
+  still merge and light (before, the whole scene was "not ready" and drawn
+  flat). `GooeyScene.shapes` holds the members that have a rect, and
+  `GooeyScene.shapeIndexOf(member)` maps a member to its place in it –
+  the same index while every member has a rect.
+- Docs: the layer order in a `GooeyStage` (backdrop, every surface, then
+  every shape's content) – content in `GooeySurface.child` is covered by a
+  later surface.
+- The edge light is never switched off by `MotionQuality` (tested).
+
 ## 0.5.0 – 2026-10-21
 
 - `SegmentTabs`: tabs with a stretchy indicator (`SegmentSpring` +

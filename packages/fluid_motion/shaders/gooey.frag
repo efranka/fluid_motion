@@ -32,28 +32,12 @@ uniform vec4 uColC;
 uniform vec4 uColD;
 uniform vec4 uWidths;   // surface: blend width towards B, C, D (0 = none)
 
-// Shape A
-uniform vec4 uRectA;    // left, top, right, bottom
-uniform vec4 uShapeA;   // type, p1, p2, vertex count (type < 0 = none)
-uniform vec4 uRipA[3];  // ripples: cx, cy, amplitude, 1/r²
-uniform vec2 uVertA[24];
-
-// Shape B
-uniform vec4 uRectB;
-uniform vec4 uShapeB;
-uniform vec4 uRipB[3];
-uniform vec2 uVertB[24];
-
-// Shapes C and D: more neighbours for the surface (mode 1 only).
-uniform vec4 uRectC;
-uniform vec4 uShapeC;
-uniform vec4 uRipC[3];
-uniform vec2 uVertC[24];
-
-uniform vec4 uRectD;
-uniform vec4 uShapeD;
-uniform vec4 uRipD[3];
-uniform vec2 uVertD[24];
+// The order matters on some GPUs: on an iPhone 11 in Safari the shapes
+// were drawn but the edge light and shadow were not – their uniforms came
+// after the big vertex arrays, past vec4 slot 124 (each array element takes
+// a whole slot). So the small uniforms come first, and the vertex arrays –
+// only polygons and fields read them – last, packed two vertices per vec4.
+// A rounded rect then reads only slots 0–45. See ARCHITECTURE.
 
 // Edge light and shadow.
 uniform vec4 uNeckB;     // surface: the neck towards B – focus x, y, amplitude, 1/sigma²
@@ -74,6 +58,28 @@ uniform vec4 uEdgeGlow;  // inner glow all along the merged outline (rgba)
 uniform vec4 uLight;     // axis glow depth (px), edge light on (0/1), outline glow depth (px), unused
 uniform vec4 uShadow;    // shadow colour (rgba)
 uniform vec4 uShadowParams; // sigma, spread, offset x, offset y
+
+// Shapes A–D (C and D: more neighbours for the surface, mode 1, and the
+// shadow, mode 2).
+uniform vec4 uRectA;    // left, top, right, bottom
+uniform vec4 uShapeA;   // type, p1, p2, vertex count (type < 0 = none)
+uniform vec4 uRipA[3];  // ripples: cx, cy, amplitude, 1/r²
+uniform vec4 uRectB;
+uniform vec4 uShapeB;
+uniform vec4 uRipB[3];
+uniform vec4 uRectC;
+uniform vec4 uShapeC;
+uniform vec4 uRipC[3];
+uniform vec4 uRectD;
+uniform vec4 uShapeD;
+uniform vec4 uRipD[3];
+
+// The shapes' vertices, two per vec4 (x0, y0, x1, y1) – or, for a field,
+// its mapping into the texture.
+uniform vec4 uVertA[12];
+uniform vec4 uVertB[12];
+uniform vec4 uVertC[12];
+uniform vec4 uVertD[12];
 
 uniform sampler2D uFieldA;
 uniform sampler2D uFieldB;
@@ -122,13 +128,19 @@ float smin(float a, float b, float k) {
   float NAME(vec2 p, float n, float round) {                                \
     float d = 1e20;                                                         \
     float s = 1.0;                                                          \
-    vec2 first = V[0];                                                      \
+    vec2 first = V[0].xy;                                                   \
     vec2 prev = first;                                                      \
-    for (int i = 1; i < MAX_VERTS; i++) {                                   \
-      if (float(i) >= n) break;                                             \
-      vec2 cur = V[i];                                                      \
-      EDGE(prev, cur)                                                       \
-      prev = cur;                                                           \
+    for (int i = 0; i < MAX_VERTS / 2; i++) {                               \
+      if (i > 0) {                                                          \
+        if (float(2 * i) >= n) break;                                       \
+        vec2 even = V[i].xy;                                                \
+        EDGE(prev, even)                                                    \
+        prev = even;                                                        \
+      }                                                                     \
+      if (float(2 * i + 1) >= n) break;                                     \
+      vec2 odd = V[i].zw;                                                   \
+      EDGE(prev, odd)                                                       \
+      prev = odd;                                                           \
     }                                                                       \
     EDGE(prev, first)                                                       \
     return s * sqrt(d) - round;                                             \
@@ -164,13 +176,13 @@ SD_POLYGON(polygonD, uVertD)
     } else if (t < 2.5) {                                                   \
       d = POLY(p, SHAPE.w, SHAPE.y);                                        \
     } else {                                                                \
-      vec2 gc = p * V[0] + V[1];                                            \
-      vec2 size = vec2(V[4].y, V[5].x);                                     \
+      vec2 gc = p * V[0].xy + V[0].zw;                                      \
+      vec2 size = V[2].yz;                                                  \
       float raw;                                                            \
       FIELD(TEX, gc, size, raw)                                             \
-      d = (raw - 0.5) * V[4].x;                                             \
-      vec2 c = (V[2] + V[3]) * 0.5;                                         \
-      vec2 h = (V[3] - V[2]) * 0.5;                                         \
+      d = (raw - 0.5) * V[2].x;                                             \
+      vec2 c = (V[1].xy + V[1].zw) * 0.5;                                   \
+      vec2 h = (V[1].zw - V[1].xy) * 0.5;                                   \
       vec2 q = abs(p - c) - h;                                              \
       d += length(max(q, 0.0));                                             \
     }                                                                       \

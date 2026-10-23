@@ -57,7 +57,7 @@ dependencies:
     git:
       url: https://github.com/efranka/fluid_motion.git
       path: packages/fluid_motion
-      ref: v0.5.0   # a tag, so your app does not change under you
+      ref: v0.5.1   # a tag, so your app does not change under you
 ```
 
 Then load the shader once at startup. If it fails, the CPU version is used
@@ -131,13 +131,27 @@ final scene = GooeyScene(
 );
 
 GooeyStage(scene: scene, children: [
-  GooeyBackdrop(scene: scene),                        // the neck (under the shapes)
+  GooeyBackdrop(scene: scene),                        // shadow and neck, under everything
   Positioned.fromRect(rect: rectA, child: GooeySurface(scene: scene, index: 0)),
   Positioned.fromRect(rect: rectB, child: GooeySurface(scene: scene, index: 1)),
-  // content that dissolves into the other shape:
-  // GooeyContent(scene: scene, index: 0, child: Icon(...)),
+  // then the content, above ALL the surfaces:
+  Positioned.fromRect(rect: rectA,
+      child: GooeyContent(scene: scene, index: 0, child: Icon(...))),
+  Positioned.fromRect(rect: rectB,
+      child: GooeyContent(scene: scene, index: 1, child: Icon(...))),
 ]);
 ```
+
+**Layer order:** backdrop → every surface → every shape's content. Content
+passed as `GooeySurface(child:)` is painted with that surface, so a later
+surface covers it when the shapes overlap or flow together – one shape hides
+the other's icons. Keep `child` for content that never meets another shape.
+To press a shape, share one `PressSpring` between its surface and its
+content (`PressScale(spring: …)`), so the two layers stay together.
+
+A member whose `rect` returns null (not laid out yet, or not shown, e.g. a
+toolbar a page does not have) is left out; the other shapes still merge and
+light.
 
 Each effect can be switched off on its own with
 `GooeyStyle(neck:, colorBlend:, blob:, contentBlend:, useShader:)`.
@@ -221,7 +235,8 @@ GooeyStyle(
 Every part is optional; the default is a hairline edge. Colours are laid
 over each shape's own (blended) colour, so one light fits every shape in the
 scene – use white or black with low opacity, or any colour. It works with
-every outline. "Reduce motion" keeps it (it is not motion).
+every outline. It is the look, not motion: neither "Reduce motion" nor
+automatic quality switches it off.
 
 The light is the shape's background, painted by `GooeySurface`, so content
 on top covers it where the content reaches the outline: give such content a

@@ -158,9 +158,6 @@ uParams2  (neck blend width, origin x, origin y, pixel ratio)
 uBump     (focus x, focus y, amplitude, 1/sigma²)
 uColA, uColB, uColC, uColD            (rgba 0..1)
 uWidths   (blend width to B, C, D, unused)        – surface mode
-shape A, B, C, D, each:
-  rect (l, t, r, b) · shape (type, p1, p2, vertex count; type < 0 = none)
-  · 3 ripples (cx, cy, amplitude, 1/r²) · 24 vec2 vertices
 uNeckB, uNeckC, uNeckD  (focus x, focus y, amplitude, 1/sigma²) – surface
 uKs       (k towards B, C, D; edge width px)
 uEdge0..3 (edge colours, rgba) · uEdgeStops (4 stops)
@@ -168,17 +165,41 @@ uAxis     (gradient begin x, y, end x, y – Alignment units in each rect)
 uFillStart, uFillEnd, uGlowStart, uGlowEnd, uEdgeGlow   (rgba)
 uLight    (axis glow depth px, edge light on 0/1, outline glow depth px, unused)
 uShadow   (rgba) · uShadowParams (sigma, spread, offset x, offset y)
+shape A, B, C, D, each:
+  rect (l, t, r, b) · shape (type, p1, p2, vertex count; type < 0 = none)
+  · 3 ripples (cx, cy, amplitude, 1/r²)
+uVertA..D (24 vertices each, two per vec4: x0, y0, x1, y1)
 samplers uFieldA..D (an empty 1×1 image when unused)
 ```
 
+**Keep the vertex arrays last.** On an iPhone 11 (A13) in Safari, with the
+arrays in the middle and the light and shadow after them, the shapes were
+drawn but the light and shadow came out as nothing (0.5.0; the Events app's
+light probe measured 0, a newer iPhone SE 62–78). The likely cause: most GPUs
+give every uniform, and every array element, a whole vec4 slot, so the 4 ×
+24 `vec2` vertices took 96 slots and pushed the light and shadow to slot
+124–137; that device read them as 0. Since 0.5.1 the vertices are packed two
+per `vec4` and come last: everything a rounded rect, a circle or a ring
+reads is in slots 0–45, and only polygons and fields read slots 46–93. A new
+uniform goes BEFORE the vertex arrays.
+
 `test/shader_uniforms_test.dart` loads the real shader and checks that every
 paint call writes exactly as many floats as `gooey.frag` declares (376
-today). It cannot check the order – that is still on you.
+today), that only vertex arrays come from slot 46 on, and – drawing on the
+test renderer – that a lit surface shows its edge, a shadow shows, and
+polygons and fields are drawn where the CPU outline is. A wrong order fails
+those.
 
 For a field shape the "vertices" carry the texture mapping instead
 (scale/offset, padded rect, value scale, grid size). Adding a slot or a
 uniform means changing both files in the same order. Each painter keeps its
 own `FragmentShader` instance(s): uniforms belong to the instance.
+
+**Members without a rect** are left out of `GooeyScene.shapes` (a toolbar a
+page does not show); the others still merge and light. The indices of
+`shapes`, `neckBetween` and `field` are indices into that list;
+`GooeySurface`/`GooeyContent` take a member index and map it with
+`shapeIndexOf`. While every member has a rect the two are the same.
 
 `GooeyShader.canDraw(shape)` is false until a path's texture has uploaded
 (`GooeyShader.updates` notifies scenes to repaint) and for custom geometries

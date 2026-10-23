@@ -60,9 +60,12 @@ class GooeyBackdrop extends StatelessWidget {
       );
 }
 
-/// The background of shape [index]: blends colour, blobs, and follows the
-/// shape's outline. Must have the same size as the shape's rect (e.g. in a
-/// Positioned with the same measurements).
+/// The background of shape [index] (a member index): blends colour, blobs,
+/// and follows the shape's outline. Must have the same size as the shape's
+/// rect (e.g. in a Positioned with the same measurements).
+///
+/// In a [GooeyStage]: [GooeyBackdrop] first, then every surface, then the
+/// content of every shape – so no shape covers another's content.
 class GooeySurface extends StatelessWidget {
   const GooeySurface({
     super.key,
@@ -74,7 +77,11 @@ class GooeySurface extends StatelessWidget {
   final GooeyScene scene;
   final int index;
 
-  /// Content on top of the background (optional). Lives in its own layer.
+  /// Content on top of the background (optional). Lives in its own layer –
+  /// but is painted WITH this surface, so a surface later in the stage
+  /// covers it where the shapes overlap. For content that should stay
+  /// visible when another shape flows over it, put it in its own
+  /// `Positioned` after every surface instead (usually a [GooeyContent]).
   final Widget? child;
 
   @override

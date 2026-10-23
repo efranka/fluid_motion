@@ -42,7 +42,10 @@ class GooeyFillPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     final shapes = scene.shapes;
-    if (shapes == null || index >= shapes.length) {
+    // This member's place among the shapes (members without a rect are
+    // left out of them).
+    final self = scene.shapeIndexOf(index);
+    if (shapes == null || self == null) {
       final c = fallbackColor ??
           (index < scene.members.length ? scene.members[index].color : null);
       if (c == null) return;
@@ -55,7 +58,7 @@ class GooeyFillPainter extends CustomPainter {
       canvas.drawPath(path, Paint()..color = c);
       return;
     }
-    final s = shapes[index];
+    final s = shapes[self];
     final o = s.rect.topLeft;
     final f = scene.field;
 
@@ -65,7 +68,7 @@ class GooeyFillPainter extends CustomPainter {
     if (scene.style.useShader && GooeyShader.canDraw(s)) {
       // The shapes this one is most connected to – it blends towards all of
       // them at once.
-      final near = blends ? f.neighboursOf(index, neighbours) : <int>[];
+      final near = blends ? f.neighboursOf(self, neighbours) : <int>[];
       final light = scene.style.light;
       final colour = near.length;
       if (light != null) {
@@ -73,7 +76,7 @@ class GooeyFillPainter extends CustomPainter {
         // neck with, or touches, after the colour neighbours.
         for (var j = 0; j < shapes.length; j++) {
           if (near.length >= GooeyShader.maxNeighbours) break;
-          if (j == index || near.contains(j)) continue;
+          if (j == self || near.contains(j)) continue;
           final touching = s.rect
               .inflate(s.maxBulge + light.edgeWidth + 2)
               .overlaps(shapes[j].rect.inflate(shapes[j].maxBulge));
@@ -88,7 +91,7 @@ class GooeyFillPainter extends CustomPainter {
           others: [for (final j in near) shapes[j]],
           blendWidths: [
             for (final (k, j) in near.indexed)
-              k < colour ? f!.widthOf(index, j) : 0,
+              k < colour ? f!.widthOf(self, j) : 0,
           ],
           necks: light == null ? const [] : [for (final j in near) _neck(j)],
           pixelRatio: pixelRatio,
@@ -115,7 +118,7 @@ class GooeyFillPainter extends CustomPainter {
     void clipShape() =>
         path == null ? canvas.clipRRect(rrect) : canvas.clipPath(path);
 
-    var active = blends ? f.activeRect(index).shift(-o) : Rect.zero;
+    var active = blends ? f.activeRect(self).shift(-o) : Rect.zero;
     if (path != null && active.width > 0 && active.height > 0) {
       active = active.intersect(path.getBounds().inflate(1));
     }
@@ -138,8 +141,10 @@ class GooeyFillPainter extends CustomPainter {
   }
 
   /// The neck between this shape and shape [j], if necks are on.
-  GooeyNeckGeometry? _neck(int j) =>
-      scene.style.neck ? scene.neckBetween(index, j) : null;
+  GooeyNeckGeometry? _neck(int j) {
+    final self = scene.shapeIndexOf(index);
+    return scene.style.neck && self != null ? scene.neckBetween(self, j) : null;
+  }
 
   static RRect _pill(Size size) => RRect.fromRectAndRadius(
         Offset.zero & size,
